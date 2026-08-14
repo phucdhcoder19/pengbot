@@ -39,9 +39,11 @@ describe('Cô lập tenant (e2e)', () => {
     const doc = await request(http)
       .post('/api/documents')
       .set('Authorization', `Bearer ${box.token}`)
-      // chú ý: body KHÔNG có tenantId — extension phải tự chèn
-      .send({ title: `Tài liệu mật của ${name}` })
-      .expect(201);
+      // Cố tình dùng .pdf với nội dung rác: extractText ném lỗi NGAY,
+      // worker không gọi API embedding → test không đụng mạng, chạy nhanh
+      // và không đốt quota. Document vẫn được tạo, đó mới là thứ cần kiểm.
+      .attach('file', Buffer.from(`Tài liệu mật của ${name}`), 'tai-lieu.pdf')
+      .expect(202); // 202 chứ không phải 201 — xử lý bất đồng bộ
 
     box.docId = doc.body.id;
   };

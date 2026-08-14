@@ -1,14 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-/// Phải khớp vector(1536) trong schema.prisma. Đổi số này = re-embed toàn bộ tài liệu.
+/// Phải khớp vector(1536) trong schema.prisma. Đổi số này = re-embed toàn bộ.
 const DIMENSIONS = 1536;
-const MODEL = 'text-embedding-3-small';
+const MODEL = 'gemini-embedding-001';
+const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:batchEmbedContents`;
+
+/// Gemini embed CÙNG một đoạn text ra vector KHÁC nhau tuỳ mục đích dùng.
+/// Chunk tài liệu → RETRIEVAL_DOCUMENT. Câu hỏi của khách → RETRIEVAL_QUERY.
+export type EmbedTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
 
 @Injectable()
 export class EmbeddingService {
   private readonly log = new Logger(EmbeddingService.name);
 
-  async embedBatch(texts: string[]): Promise<number[][]> {
+  async embedBatch(
+    texts: string[],
+    task: EmbedTask = 'RETRIEVAL_DOCUMENT',
+  ): Promise<number[][]> {
     if (!texts.length) return [];
 
     const key = process.env.EMBEDDING_API_KEY;
@@ -19,32 +27,52 @@ export class EmbeddingService {
       return texts.map(fakeEmbedding);
     }
 
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    // Gemini giới hạn 100 request mỗi lần gọi batch
+    if (texts.length > 100) {
+      throw new Error(`Batch quá lớn: ${texts.length}, tối đa 100`);
+    }
+
+    const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`,
+        'x-goog-api-key': key,
       },
-      body: JSON.stringify({ model: MODEL, input: texts }),
+      body: JSON.stringify({
+        requests: texts.map((text) => ({
+          model: `models/${MODEL}`,
+          content: { parts: [{ text }] },
+          taskType: task,
+          outputDimensionality: DIMENSIONS,
+        })),
+      }),
     });
 
     if (!res.ok) {
       throw new Error(`Embedding API lỗi ${res.status}: ${await res.text()}`);
     }
 
-    const json = (await res.json()) as {
-      data: { index: number; embedding: number[] }[];
-    };
+    const json = (await res.json()) as { embeddings: { values: number[] }[] };
 
-    // ⚠️ API không cam kết trả về đúng thứ tự đã gửi → phải sắp lại theo index.
-    // Sai chỗ này thì content và vector lệch nhau: retrieve ra kết quả vô lý
-    // mà không có lỗi nào để lần ra.
-    return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+    if (json.embeddings?.length !== texts.length) {
+      throw new Error(
+        `Gửi ${texts.length} đoạn nhưng nhận ${json.embeddings?.length} vector`,
+      );
+    }
+
+    // ⚠️ Xin ít hơn 3072 chiều = vector bị cắt bớt → KHÔNG còn độ dài 1.
+    // Đo thực tế: 0.686. Bỏ bước này thì so sánh khoảng cách lệch.
+    return json.embeddings.map((e) => normalize(e.values));
   }
 }
 
-/// Vector giả **tất định** (cùng text → cùng vector) để chạy thử đường ống khi chưa có key.
-/// Không mang ngữ nghĩa gì cả — chỉ để kiểm tra ingest chạy thông.
+function normalize(v: number[]): number[] {
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  return v.map((x) => x / norm);
+}
+
+/// Vector giả **tất định** (cùng text → cùng vector) để chạy thử khi chưa có key.
+/// Không mang ngữ nghĩa gì — chỉ để kiểm tra đường ống chạy thông.
 function fakeEmbedding(text: string): number[] {
   let seed = 0;
   for (let i = 0; i < text.length; i++) {
@@ -52,14 +80,10 @@ function fakeEmbedding(text: string): number[] {
   }
 
   const out = new Array<number>(DIMENSIONS);
-  let sumSq = 0;
   for (let i = 0; i < DIMENSIONS; i++) {
-    seed = (seed * 1664525 + 1013904223) >>> 0; // LCG — bộ sinh số giả ngẫu nhiên
+    seed = (seed * 1664525 + 1013904223) >>> 0; // LCG
     out[i] = seed / 0xffffffff - 0.5;
-    sumSq += out[i] * out[i];
   }
 
-  // Chuẩn hoá về độ dài 1, giống vector thật của OpenAI
-  const norm = Math.sqrt(sumSq) || 1;
-  return out.map((v) => v / norm);
+  return normalize(out);
 }
