@@ -130,10 +130,14 @@ pdf-parse multer @types/multer
 stripe
 ```
 
-### Nợ kỹ thuật cần dọn
-- `rss-parser`, `@nestjs/schedule` — sót lại từ ý tưởng news-radar, gỡ đi.
-- Thư mục dự án tên `news-radar`, DB tên `news` — không khớp sản phẩm. Đổi tên DB cần xóa volume Docker (mất data dev, hiện chưa có gì quan trọng).
-- `prisma/migrations/20260813080138_init` tạo bảng `Article` — sẽ bị reset ở bước đầu tiên.
+### Nợ kỹ thuật — đã dọn xong
+- ~~`rss-parser`, `@nestjs/schedule`~~ — đã gỡ.
+- ~~Thư mục `news-radar`, DB `news`~~ — thư mục đổi thành `pengbot`, DB đổi thành `pengbot`, volume `news-radar_pgdata` bỏ đi.
+- ~~`prisma/migrations/20260813080138_init` (bảng `Article`)~~ — đã xoá.
+
+### Nợ kỹ thuật còn lại
+- `generated/` nằm ngoài `src/` nên tsc đẩy output thành `dist/src/main.js`. Đã chỉnh `start:prod` cho khớp, nhưng lúc dựng Dockerfile deploy nhớ chuyện này.
+- `documents/document.module.ts` — tên file số ít, class `DocumentModule`, trong khi thư mục và service là số nhiều. Đổi cho nhất quán khi rảnh.
 
 ---
 
@@ -447,7 +451,7 @@ Người dùng cuối sẽ cố "jailbreak" chatbot. Ba lớp:
 ## 9. Cấu trúc thư mục dự kiến
 
 ```
-news-radar/                       (tên thư mục sẽ đổi sau)
+pengbot/
 ├── docker-compose.yml            postgres(pgvector) + redis
 ├── PROJECT.md                    ← file này
 ├── backend/
@@ -578,7 +582,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
 ### Biến môi trường
 ```env
-DATABASE_URL="postgresql://dev:dev@localhost:5432/news"
+DATABASE_URL="postgresql://dev:dev@localhost:5432/pengbot"
 REDIS_URL="redis://localhost:6379"
 CLIENT_URL="http://localhost:5173"
 JWT_SECRET="đổi-thành-chuỗi-ngẫu-nhiên-dài"
@@ -607,14 +611,14 @@ const res = await client.messages.create({
 
 ### Bước 0 — Bật hạ tầng *(2 phút)*
 ```bash
-cd d:\news-radar
+cd d:\pengbot
 docker compose up -d
 docker compose ps          # cả postgres và redis phải "running"
 ```
 
 ### Bước 1 — Cài dependency cho giai đoạn 0–1 *(3 phút)*
 ```bash
-cd d:\news-radar\backend
+cd d:\pengbot\backend
 npm i @prisma/adapter-pg pg @nestjs/jwt argon2 class-validator class-transformer
 npm i -D @types/pg
 npm uninstall rss-parser @nestjs/schedule
@@ -654,8 +658,8 @@ Theo thứ tự:
 - [x] React + Vite frontend khởi tạo (`client/`, cổng 5173)
 - [x] **Giai đoạn 0** — gỡ `rss-parser`/`@nestjs/schedule`, cài `@prisma/adapter-pg` + `pg` + `@nestjs/jwt` + `argon2` + `class-validator`
 - [x] Schema multi-tenant + migration đã áp dụng (7 bảng, extension `vector`, index HNSW qua `npm run db:vector-index`)
-- [ ] **Giai đoạn 1** — PrismaService (driver adapter) + auth + cô lập dữ liệu ← *đang ở đây*
-- [ ] Giai đoạn 2 — ingest PDF → chunk → embed → vector
+- [x] **Giai đoạn 1** — Prisma client + extension lọc tenantId, auth (register/login → JWT), `TenantMiddleware`, `JwtAuthGuard`, `documents` CRUD tối thiểu, **9/9 test cô lập tenant pass** (`npm run test:e2e`)
+- [ ] Giai đoạn 2 — ingest PDF → chunk → embed → vector ← *đang ở đây*
 - [ ] Giai đoạn 3 — RAG chat API
 - [ ] Giai đoạn 4 — widget JS nhúng
 - [ ] Giai đoạn 5 — Stripe billing

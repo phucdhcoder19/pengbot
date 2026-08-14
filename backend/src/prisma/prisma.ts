@@ -43,6 +43,16 @@ export function createPrismaClient() {
             case 'create':
               (args as any).data = { ...(args as any).data, tenantId };
               break;
+            case 'createMany':
+            case 'createManyAndReturn': {
+              // args.data ở đây là MẢNG, không phải object như case 'create'.
+              // Spread object lên mảng sẽ tạo ra rác {0:..., 1:..., tenantId:...}
+              const rows = (args as any).data;
+              (args as any).data = Array.isArray(rows)
+                ? rows.map((r: any) => ({ ...r, tenantId }))
+                : { ...rows, tenantId };
+              break;
+            }
 
             case 'upsert':
               (args as any).where = { ...(args as any).where, tenantId };

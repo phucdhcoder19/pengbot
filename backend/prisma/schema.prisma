@@ -4,6 +4,10 @@
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
+  // NestJS build ra CommonJS. Mặc định generator này sinh code ESM
+  // (dùng import.meta.url) → tsc emit CJS nhưng vẫn còn import.meta
+  // → Node coi file là ESM và chết ở "exports is not defined".
+  moduleFormat = "cjs"
 }
 
 datasource db {
@@ -167,6 +171,9 @@ enum Role {
 
 enum SourceType {
   PDF
+  DOCX
+  TXT
+  MD
   URL
 }
 
