@@ -1,0 +1,188 @@
+// Support Widget SaaS — multi-tenant RAG chatbot
+// Xem PROJECT.md để hiểu bối cảnh và ràng buộc thiết kế.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────── Multi-tenant core ───────────────────────────
+
+/// Một công ty dùng dịch vụ. Gốc của mọi thứ.
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique // dùng cho URL, vd "acme"
+  publicKey String   @unique // nằm trong snippet widget — công khai, KHÔNG phải secret
+  plan      Plan     @default(FREE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Widget chỉ được phép chạy trên các domain này (kiểm tra header Origin).
+  /// Đây là lớp bảo vệ thật cho publicKey, vì publicKey ai cũng đọc được.
+  allowedDomains String[] @default([])
+
+  // Giao diện widget — công ty tự đổi trong dashboard, không phải sửa lại snippet
+  widgetTitle    String @default("Chat with us")
+  widgetColor    String @default("#0D9488")
+  widgetGreeting String @default("Xin chào! Tôi có thể giúp gì cho bạn?")
+
+  users         User[]
+  documents     Document[]
+  chunks        Chunk[]
+  conversations Conversation[]
+  messages      Message[]
+  usageEvents   UsageEvent[]
+}
+
+/// Nhân viên của công ty, đăng nhập dashboard.
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  /// Unique toàn hệ thống (MVP): một người chỉ thuộc một công ty.
+  /// Đổi lại: login chỉ cần email + password, không phải hỏi thêm mã công ty.
+  /// Khi cần cho một người thuộc nhiều công ty → đổi sang @@unique([tenantId, email])
+  /// và bổ sung slug công ty vào form đăng nhập.
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(OWNER)
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Ingest + RAG ───────────────────────────
+
+/// Một tài liệu nguồn (PDF upload; sau này thêm URL scrape).
+model Document {
+  id         String     @id @default(uuid())
+  tenantId   String
+  title      String
+  sourceType SourceType @default(PDF)
+  sourceUrl  String? // khi sourceType = URL
+  fileName   String?
+  fileSize   Int?
+  status     DocStatus  @default(PENDING)
+  error      String? // thông báo lỗi khi FAILED
+  chunkCount Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks Chunk[]
+
+  @@index([tenantId, status])
+}
+
+/// Một đoạn văn bản đã embed. Đây là thứ RAG retrieve.
+model Chunk {
+  id         String   @id @default(uuid())
+  tenantId   String // BẮT BUỘC — lọc mọi truy vấn vector theo đây
+  documentId String
+  chunkIndex Int // thứ tự trong tài liệu
+  content    String
+  tokenCount Int?
+  createdAt  DateTime @default(now())
+
+  /// pgvector. Prisma không hiểu kiểu này → truy vấn bằng $queryRaw.
+  /// 1536 chiều = OpenAI text-embedding-3-small. Đổi số này = phải re-embed toàn bộ.
+  embedding Unsupported("vector(1536)")?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Chat ───────────────────────────
+
+/// Một phiên chat của một khách vào web công ty.
+model Conversation {
+  id        String   @id @default(uuid())
+  tenantId  String
+  visitorId String? // sinh phía widget, lưu localStorage
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([tenantId, createdAt])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conversationId String
+  role           MsgRole
+  content        String
+  citations      Json? // [{ chunkId, documentId, title }]
+  /// Độ tin cậy của retrieval (suy từ khoảng cách vector, 0..1).
+  /// Thấp quá thì trả "không có thông tin" thay vì gọi LLM.
+  confidence     Float?
+  tokensUsed     Int?
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Usage / billing ───────────────────────────
+
+/// Đếm usage để tính tiền. Giai đoạn đầu chỉ ghi, chưa gắn Stripe.
+model UsageEvent {
+  id        String    @id @default(uuid())
+  tenantId  String
+  type      UsageType
+  quantity  Int       @default(1)
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+enum SourceType {
+  PDF
+  URL
+}
+
+enum DocStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum MsgRole {
+  USER
+  ASSISTANT
+}
+
+enum UsageType {
+  AI_MESSAGE
+  DOCUMENT_INGEST
+}

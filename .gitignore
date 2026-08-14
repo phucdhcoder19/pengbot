@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local agent config / skill symlinks (source of truth is .agents/skills)
+**/.claude/settings.local.json
+**/.claude/skills/
+**/.windsurf/skills/
