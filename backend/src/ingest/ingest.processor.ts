@@ -47,6 +47,19 @@ export class IngestProcessor extends WorkerHost {
   ) {
     const tenantId = TenantContext.requireTenantId();
 
+    // Tài liệu có thể đã bị xoá trong lúc job nằm chờ trong hàng đợi (khách bấm
+    // xoá, hoặc cả tenant bị xoá). Khi đó không có gì để làm — kết thúc êm thay
+    // vì để prisma.update ném "No record was found" rồi retry 3 lần vô ích.
+    const exists = await this.prisma.document.findFirst({
+      where: { id: documentId },
+      select: { id: true },
+    });
+    if (!exists) {
+      this.log.warn(`Bỏ qua job: tài liệu ${documentId} không còn tồn tại`);
+      await unlink(filePath).catch(() => {});
+      return { skipped: true };
+    }
+
     try {
       await this.prisma.document.update({
         where: { id: documentId },

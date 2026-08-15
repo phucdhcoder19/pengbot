@@ -16,6 +16,9 @@ import { ConfigService } from '@nestjs/config';
 import { IngestModule } from './ingest/ingest.module';
 import { RagModule } from './rag/rag.module';
 import { ChatModule } from './chat/chat.module';
+import { TenantModule } from './tenant/tenant.module';
+import { ConversationsModule } from './conversations/conversations.module';
+import { WidgetModule } from './widget/widget.module';
 
 @Module({
   imports: [
@@ -32,6 +35,9 @@ import { ChatModule } from './chat/chat.module';
     IngestModule,
     RagModule,
     ChatModule,
+    TenantModule,
+    ConversationsModule,
+    WidgetModule,
   ],
   controllers: [AppController],
   providers: [AppService],
