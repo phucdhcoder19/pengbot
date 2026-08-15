@@ -1,1 +1,291 @@
 @import "tailwindcss";
+
+/* Dark mode được bật bằng class trên <html> (xem lib/theme.tsx). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ───────────────────────── Bảng màu gốc ─────────────────────────
+   Một màu nhấn duy nhất: NGỌC BÍCH (jade). Kế thừa #0D9488 của backend
+   nhưng đẩy sâu và bớt ám lam, để đọc ra "trầm, đáng tin" thay vì
+   "teal SaaS". Phần còn lại là thang xám trung tính có phảng phất
+   sắc lục, nên đặt cạnh màu nhấn không bị vênh.
+   Vàng hổ phách và đỏ CHỈ dùng cho trạng thái, không bao giờ trang trí. */
+:root {
+  --jade-50: #ecf6f2;
+  --jade-100: #d6ebe3;
+  --jade-200: #aed8c8;
+  --jade-300: #7cbfa8;
+  --jade-400: #4ca287;
+  --jade-500: #2a8770;
+  --jade-600: #166f5c;
+  --jade-700: #0f5a4a;
+  --jade-800: #0d473b;
+  --jade-900: #0b3a30;
+
+  --ink-50: #f7f8f7;
+  --ink-100: #eef0ef;
+  --ink-200: #e1e4e3;
+  --ink-300: #c7cccb;
+  --ink-400: #9aa2a0;
+  --ink-500: #77817f;
+  --ink-600: #545c5b;
+  --ink-700: #3e4645;
+  --ink-800: #2a3130;
+  --ink-900: #171d1c;
+  --ink-950: #0d1211;
+}
+
+/* ─────────────────── Token ngữ nghĩa — chế độ sáng ─────────────────── */
+:root {
+  --canvas: #fbfcfb;
+  --surface: #ffffff;
+  --surface-sunken: #f4f6f5;
+  --surface-hover: #f0f3f2;
+
+  --line: #e4e8e7;
+  --line-strong: #d2d8d6;
+
+  --text: #171d1c;
+  --text-soft: #545c5b;
+  --text-faint: #838c8a;
+  --text-inverse: #ffffff;
+
+  --accent: #166f5c;
+  --accent-hover: #0f5a4a;
+  --accent-soft: #ecf6f2;
+  --accent-line: #aed8c8;
+  --accent-text: #0f5a4a;
+  --on-accent: #ffffff;
+
+  --warn: #b45309;
+  --warn-soft: #fdf3e7;
+  --warn-line: #f0d3ac;
+
+  --danger: #b42318;
+  --danger-hover: #93190f;
+  --danger-soft: #fdf1f0;
+  --danger-line: #f2c9c5;
+
+  --scrim: rgb(23 29 28 / 0.45);
+  --elevation-card: 0 1px 2px rgb(23 29 28 / 0.04);
+  --elevation-pop: 0 8px 28px -12px rgb(23 29 28 / 0.18);
+  /* Bóng nhiều tầng cho các "cửa sổ" trên trang chủ — kiểu card của Attio */
+  --elevation-window:
+    0 0 0 1px rgb(23 29 28 / 0.05), 0 2px 6px rgb(23 29 28 / 0.05),
+    0 24px 48px -12px rgb(23 29 28 / 0.2);
+
+  /* Trang chủ: gradient tím-lam rất nhạt sau mockup, kiểu Attio. */
+  --landing-wash: rgb(122 146 255 / 0.22);
+  --landing-wash-soft: rgb(122 146 255 / 0.1);
+}
+
+/* ─────────────────── Token ngữ nghĩa — chế độ tối ─────────────────── */
+html.dark {
+  --canvas: #0d1211;
+  --surface: #141a19;
+  --surface-sunken: #1b2221;
+  --surface-hover: #1f2726;
+
+  --line: #262e2d;
+  --line-strong: #343d3c;
+
+  --text: #edf1f0;
+  --text-soft: #a3adab;
+  --text-faint: #77817f;
+  --text-inverse: #0d1211;
+
+  --accent: #4fae90;
+  --accent-hover: #63c0a2;
+  --accent-soft: #15302a;
+  --accent-line: #2c5a4b;
+  --accent-text: #7cbfa8;
+  --on-accent: #07201a;
+
+  --warn: #e0a458;
+  --warn-soft: #221a10;
+  --warn-line: #4a3720;
+
+  --danger: #f0776a;
+  --danger-hover: #f79287;
+  --danger-soft: #241413;
+  --danger-line: #4d2622;
+
+  --scrim: rgb(0 0 0 / 0.6);
+  --elevation-card: none;
+  --elevation-pop: 0 8px 28px -12px rgb(0 0 0 / 0.6);
+  --elevation-window:
+    0 0 0 1px rgb(0 0 0 / 0.55), 0 24px 48px -12px rgb(0 0 0 / 0.7);
+
+  --landing-wash: rgb(122 146 255 / 0.11);
+  --landing-wash-soft: rgb(122 146 255 / 0.05);
+}
+
+/* `inline` để utility trỏ thẳng tới var ngữ nghĩa → đổi theme là đổi màu,
+   không cần nhân đôi class dark: ở mọi component. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-hover: var(--surface-hover);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-text: var(--text);
+  --color-soft: var(--text-soft);
+  --color-faint: var(--text-faint);
+  --color-inverse: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-accent-text: var(--accent-text);
+  --color-on-accent: var(--on-accent);
+
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-scrim: var(--scrim);
+
+  --font-sans: "Be Vietnam Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Newsreader", ui-serif, Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --shadow-card: var(--elevation-card);
+  --shadow-pop: var(--elevation-pop);
+  --shadow-window: var(--elevation-window);
+
+  /* Nhịp chuyển động: ngắn, mượt, không nảy. */
+  --ease-out-soft: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ───────────────────────── Nền tảng ───────────────────────── */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Cuộn mượt tới các mục neo trên trang chủ — tôn trọng reduced motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem; /* 15px — thân chữ */
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Tiêu đề dùng font hiển thị, đặt chặt hơn thân chữ. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    color: var(--text);
+  }
+
+  /* Số liệu trong bảng và trục biểu đồ phải thẳng cột. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: var(--accent-line);
+    color: var(--text);
+  }
+
+  /* Bàn phím: focus luôn thấy rõ, chuột thì không phiền. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid var(--canvas);
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+  }
+}
+
+@layer utilities {
+  /* Nhãn nhỏ ở lề — dấu hiệu nhận diện xuyên suốt dashboard. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .animate-rise {
+    animation: rise 200ms var(--ease-out-soft) both;
+  }
+  .animate-fade {
+    animation: fade 150ms var(--ease-out-soft) both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
