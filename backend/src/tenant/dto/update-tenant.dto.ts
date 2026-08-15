@@ -9,6 +9,14 @@ import {
 } from 'class-validator';
 
 export class UpdateTenantDto {
+  /// Tên công ty hiển thị trong dashboard. KHÔNG đổi slug theo — slug đã nằm
+  /// trong URL và tài liệu của khách, đổi là gãy liên kết cũ.
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name?: string;
+
   /// Danh sách domain được nhúng widget. Rỗng = cho phép tất cả.
   @IsOptional()
   @IsArray()

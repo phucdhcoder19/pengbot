@@ -55,8 +55,18 @@ export class AuthService {
   }
 
   private async issueToken(
-    user: { id: string; email: string; tenantId: string },
-    tenant: { id: string; name: string; slug: string; publicKey: string },
+    user: { id: string; email: string; role: string; tenantId: string },
+    tenant: {
+      id: string;
+      name: string;
+      slug: string;
+      publicKey: string;
+      plan: string;
+      allowedDomains: string[];
+      widgetTitle: string;
+      widgetColor: string;
+      widgetGreeting: string;
+    },
   ) {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
@@ -64,14 +74,22 @@ export class AuthService {
       email: user.email,
     });
 
+    // Trả về ĐÚNG hình dạng của GET /api/me. Dashboard dùng chung một kiểu
+    // Session cho cả hai đường — đăng nhập xong và khôi phục phiên sau F5 —
+    // nên hai nơi trả về khác nhau là trang Settings vỡ ngay sau khi login.
     return {
       accessToken,
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, email: user.email, role: user.role },
       tenant: {
         id: tenant.id,
         name: tenant.name,
         slug: tenant.slug,
         publicKey: tenant.publicKey, // dashboard cần cái này để dựng snippet
+        plan: tenant.plan,
+        allowedDomains: tenant.allowedDomains,
+        widgetTitle: tenant.widgetTitle,
+        widgetColor: tenant.widgetColor,
+        widgetGreeting: tenant.widgetGreeting,
       },
     };
   }
