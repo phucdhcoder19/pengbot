@@ -14,6 +14,8 @@ import { DocumentModule } from './documents/document.module';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { IngestModule } from './ingest/ingest.module';
+import { RagModule } from './rag/rag.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { IngestModule } from './ingest/ingest.module';
     PrismaModule,
     DocumentModule,
     IngestModule,
+    RagModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -17,6 +17,6 @@ import { IngestProcessor, INGEST_QUEUE } from './ingest.processor';
   ],
   providers: [EmbeddingService, IngestProcessor],
   // export để DocumentsModule inject được ĐÚNG cái queue này
-  exports: [BullModule],
+  exports: [BullModule, EmbeddingService],
 })
 export class IngestModule {}

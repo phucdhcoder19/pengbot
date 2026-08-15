@@ -3,6 +3,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 export type TenantStore = {
   tenantId: string;
   userId?: string; // chỉ có ở request dashboard, request widget thì không
+  /// Chỉ có ở request widget. Middleware đã phải nạp Tenant để tra publicKey
+  /// nên lấy luôn, tránh guard phải truy vấn DB lần thứ hai.
+  allowedDomains?: string[];
 };
 
 const als = new AsyncLocalStorage<TenantStore>();
