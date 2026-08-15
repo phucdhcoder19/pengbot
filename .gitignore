@@ -24,3 +24,5 @@ Thumbs.db
 **/.claude/settings.local.json
 **/.claude/skills/
 **/.windsurf/skills/
+
+.claude/
