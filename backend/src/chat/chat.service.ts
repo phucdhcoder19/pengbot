@@ -7,6 +7,14 @@ import {
   type Citation,
   type RagAnswer,
 } from '../rag/answerer.service';
+
+/// Sự kiện gửi cho client qua SSE.
+/// 'meta' đi ĐẦU TIÊN để widget lưu conversationId ngay, kể cả khi phần sau hỏng.
+export type ChatEvent =
+  | { type: 'meta'; conversationId: string }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; citations: Citation[]; confidence: number }
+  | { type: 'error'; message: string };
 import type { ChatDto } from './dto/chat.dto';
 
 export type ChatReply = {
@@ -56,29 +64,7 @@ export class ChatService {
     // Gom các thao tác ghi sau khi đã có câu trả lời vào MỘT transaction.
     // Lời gọi LLM nằm ngoài — ôm nó trong transaction là giữ kết nối DB
     // suốt 2 giây chờ mạng, rất tốn với endpoint công khai.
-    await this.prisma.$transaction([
-      this.prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          role: 'ASSISTANT',
-          content: result.answer,
-          citations: result.citations,
-          confidence: result.confidence,
-          tokensUsed: result.tokensUsed,
-        } as any,
-      }),
-      // Chỉ tính tiền khi thật sự gọi LLM. Câu "không có thông tin" và câu
-      // báo lỗi hệ thống đều không tốn token nên không được tính.
-      ...(result.usedLlm
-        ? [this.prisma.usageEvent.create({ data: { type: 'AI_MESSAGE' } as any })]
-        : []),
-      // @updatedAt chỉ tự chạy khi có UPDATE. Thêm Message không phải là update
-      // Conversation, nên phải chạm tay vào để dashboard sắp đúng thứ tự.
-      this.prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { updatedAt: new Date() },
-      }),
-    ]);
+    await this.persist(conversation.id, result);
 
     this.log.log(
       `chat conv=${conversation.id} history=${history.length} llm=${result.usedLlm} tokens=${result.tokensUsed}`,
@@ -90,6 +76,109 @@ export class ChatService {
       citations: result.citations,
       confidence: result.confidence,
     };
+  }
+
+  /**
+   * Bản stream của chat(): phát từng mẩu chữ ngay khi Gemini sinh ra.
+   *
+   * Cùng một luồng nghiệp vụ với chat() — lưu câu hỏi, viết lại, truy hồi,
+   * sinh câu trả lời, ghi sổ — chỉ khác ở chỗ câu trả lời đi ra dần thay vì
+   * đợi trọn vẹn. Phần ghi DB vẫn chạy MỘT LẦN sau khi stream kết thúc.
+   */
+  async *chatStream(dto: ChatDto): AsyncGenerator<ChatEvent> {
+    const conversation = await this.resolveConversation(dto);
+
+    // Phát meta NGAY: widget lưu conversationId vào localStorage trước cả khi
+    // có chữ đầu tiên. Nếu mạng đứt giữa chừng, lượt sau vẫn nối đúng phiên.
+    yield { type: 'meta', conversationId: conversation.id };
+
+    await this.prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'USER',
+        content: dto.message,
+      } as any,
+    });
+
+    const history = await this.loadHistory(conversation.id);
+
+    let full = '';
+    let citations: Citation[] = [];
+    let confidence = 0;
+    let usedLlm = false;
+    let tokensUsed = 0;
+
+    try {
+      const standalone = await this.answerer.rewriteQuestion(dto.message, history);
+      const chunks = await this.retriever.retrieve(standalone);
+
+      for await (const piece of this.answerer.answerStream(
+        dto.message,
+        chunks,
+        history,
+      )) {
+        if (piece.type === 'delta') {
+          full += piece.text;
+          yield { type: 'delta', text: piece.text };
+        } else {
+          citations = piece.citations;
+          confidence = piece.confidence;
+          usedLlm = piece.usedLlm;
+          tokensUsed = piece.tokensUsed;
+        }
+      }
+
+      yield { type: 'done', citations, confidence };
+    } catch (err) {
+      const chiTiet = err instanceof Error ? err.message : String(err);
+      this.log.error(`Stream hỏng: ${chiTiet}`);
+
+      // Đã phát được một phần chữ thì giữ nguyên phần đó rồi nối câu xin lỗi —
+      // xoá đi trước mắt khách còn khó hiểu hơn.
+      full = full ? `${full}\n\n${LOI_HE_THONG}` : LOI_HE_THONG;
+      citations = [];
+      confidence = 0;
+      usedLlm = false;
+
+      yield { type: 'error', message: LOI_HE_THONG };
+    }
+
+    // Ghi sổ SAU KHI stream xong. Không thể ghi sớm hơn vì lúc đó chưa có
+    // câu trả lời hoàn chỉnh để lưu vào Message.content.
+    await this.persist(conversation.id, {
+      answer: full,
+      citations,
+      confidence,
+      usedLlm,
+      tokensUsed,
+    });
+
+    this.log.log(
+      `chat(stream) conv=${conversation.id} history=${history.length} llm=${usedLlm} tokens=${tokensUsed}`,
+    );
+  }
+
+  /** Lưu câu trả lời + usage + updatedAt trong một transaction. Dùng chung cho cả hai đường. */
+  private async persist(conversationId: string, result: RagAnswer) {
+    await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId,
+          role: 'ASSISTANT',
+          content: result.answer,
+          citations: result.citations,
+          confidence: result.confidence,
+          tokensUsed: result.tokensUsed,
+        } as any,
+      }),
+      ...(result.usedLlm
+        ? [this.prisma.usageEvent.create({ data: { type: 'AI_MESSAGE' } as any })]
+        : []),
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
   }
 
   /**

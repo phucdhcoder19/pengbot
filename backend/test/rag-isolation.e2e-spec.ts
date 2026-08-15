@@ -196,6 +196,45 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
     expect(cuaB.body.conversationId).not.toBe(cuaA.body.conversationId);
   });
 
+  it('/public/chat/stream trả về SSE đúng thứ tự meta → delta → done', async () => {
+    const res = await request(http)
+      .post('/public/chat/stream')
+      .send({ publicKey: A.publicKey, message: 'hoan tien the nao' })
+      .expect(200)
+      .expect('Content-Type', /text\/event-stream/);
+
+    // supertest gom cả stream lại thành một chuỗi — đủ để kiểm cấu trúc
+    const events = res.text
+      .split('\n\n')
+      .filter((b) => b.startsWith('data: '))
+      .map((b) => JSON.parse(b.slice(6)));
+
+    expect(events[0].type).toBe('meta');
+    expect(events[0].conversationId).toBeTruthy();
+
+    const loai = events.map((e) => e.type);
+    expect(loai).toContain('delta');
+    expect(loai[loai.length - 1]).toBe('done');
+
+    // Câu trả lời ghép từ các delta phải khớp Message đã lưu trong DB
+    const full = events
+      .filter((e) => e.type === 'delta')
+      .map((e) => e.text)
+      .join('');
+
+    const saved = await prisma.message.findFirst({
+      where: { conversationId: events[0].conversationId, role: 'ASSISTANT' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(saved?.content).toBe(full);
+  });
+
+  it('publicKey sai trên endpoint stream cũng bị 401', () =>
+    request(http)
+      .post('/public/chat/stream')
+      .send({ publicKey: 'pk_bay', message: 'hoan tien' })
+      .expect(401));
+
   it('Message luôn thuộc đúng tenant của Conversation', async () => {
     const lech = await prisma.$queryRaw<{ lech: number }[]>`
       SELECT count(*)::int AS lech

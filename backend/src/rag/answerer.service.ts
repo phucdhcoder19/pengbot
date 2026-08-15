@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { RetrievedChunk } from './retriever.service';
 
 const MODEL = process.env.LLM_MODEL ?? 'gemini-3.5-flash';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}`;
+const ENDPOINT = `${BASE}:generateContent`;
+const STREAM_ENDPOINT = `${BASE}:streamGenerateContent`;
 
 const KHONG_BIET = 'Xin lỗi, tôi không có thông tin về việc này.';
 
@@ -25,6 +27,18 @@ export type RagAnswer = {
   usedLlm: boolean; // false = trả lời "không biết" mà không tốn token nào
   tokensUsed: number;
 };
+
+/// Một mẩu trong luồng stream. 'delta' là chữ mới thêm vào (KHÔNG phải toàn bộ
+/// câu trả lời tính tới lúc đó), 'end' mang phần dữ liệu chỉ biết được khi xong.
+export type AnswerChunk =
+  | { type: 'delta'; text: string }
+  | {
+      type: 'end';
+      citations: Citation[];
+      confidence: number;
+      usedLlm: boolean;
+      tokensUsed: number;
+    };
 
 /// Hướng dẫn hệ thống. Đây là lớp chống prompt injection thứ nhất.
 const SYSTEM_PROMPT = `Bạn là trợ lý hỗ trợ khách hàng.
@@ -104,11 +118,14 @@ export class AnswererService {
     }
   }
 
-  async answer(
-    question: string,
-    chunks: RetrievedChunk[],
-    history: ChatTurn[] = [],
-  ): Promise<RagAnswer> {
+  /**
+   * Quyết định có trả lời được không, và chuẩn bị mọi thứ để gọi LLM.
+   *
+   * Tách riêng vì hai đường — answer() và answerStream() — phải dùng CHUNG
+   * đúng một logic chốt chặn. Chép đôi ra là sớm muộn cũng lệch nhau.
+   * Hàm thuần, không chạm mạng.
+   */
+  private prepare(question: string, chunks: RetrievedChunk[], history: ChatTurn[]) {
     const maxDistance = Number(process.env.RAG_MAX_DISTANCE ?? 0.4);
 
     // ⭐ Chốt chặn tin cậy — đặt TRƯỚC khi gọi LLM.
@@ -117,11 +134,8 @@ export class AnswererService {
     const relevant = chunks.filter((c) => c.distance <= maxDistance);
     if (!relevant.length) {
       return {
-        answer: KHONG_BIET,
-        citations: [],
+        canAnswer: false as const,
         confidence: chunks.length ? toConfidence(chunks[0].distance) : 0,
-        usedLlm: false,
-        tokensUsed: 0,
       };
     }
 
@@ -129,46 +143,167 @@ export class AnswererService {
       .map((c, i) => `[${i + 1}] (${c.documentTitle}) ${sanitize(c.content)}`)
       .join('\n\n');
 
-    // Lịch sử đi vào contents dưới dạng nhiều lượt hội thoại thật, không nhét
-    // vào một chuỗi phẳng — model được huấn luyện để hiểu cấu trúc này.
-    const contents = [
-      ...history.map((t) => ({
-        role: t.role === 'USER' ? 'user' : 'model',
-        parts: [{ text: sanitize(t.content) }],
-      })),
-      {
-        role: 'user',
-        // Bọc thẻ riêng: lớp chống injection thứ hai. LLM nhìn thấy ranh giới
-        // rõ ràng giữa "dữ liệu tham khảo" và "câu hỏi cần trả lời".
-        parts: [
-          {
-            text: `<context>\n${context}\n</context>\n\n<question>\n${sanitize(question)}\n</question>`,
-          },
-        ],
-      },
-    ];
-
-    const { text, tokens } = await this.callGemini({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents,
-      generationConfig: {
-        temperature: 0.2, // thấp = bám sát context, ít bịa
-        maxOutputTokens: 1024,
-        // RAG không cần suy luận nhiều tầng — việc của LLM chỉ là diễn đạt lại
-        // context. Đo thực tế: 816 → 318 token cho cùng một câu trả lời.
-        thinkingConfig: { thinkingLevel: 'minimal' },
-      },
-    });
-
     return {
-      answer: text,
+      canAnswer: true as const,
       // Một citation cho mỗi TÀI LIỆU, không phải mỗi chunk — 5 chunk cùng
       // một file thì hiện 5 dòng "Nguồn: ..." giống hệt nhau là vô nghĩa.
       citations: dedupeByDocument(relevant),
       confidence: toConfidence(relevant[0].distance),
+      body: {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        // Lịch sử đi vào contents dưới dạng nhiều lượt hội thoại thật, không
+        // nhét vào một chuỗi phẳng — model hiểu cấu trúc này tốt hơn.
+        contents: [
+          ...history.map((t) => ({
+            role: t.role === 'USER' ? 'user' : 'model',
+            parts: [{ text: sanitize(t.content) }],
+          })),
+          {
+            role: 'user',
+            // Bọc thẻ riêng: lớp chống injection thứ hai. LLM thấy ranh giới
+            // rõ ràng giữa "dữ liệu tham khảo" và "câu hỏi cần trả lời".
+            parts: [
+              {
+                text: `<context>\n${context}\n</context>\n\n<question>\n${sanitize(question)}\n</question>`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2, // thấp = bám sát context, ít bịa
+          maxOutputTokens: 1024,
+          // RAG không cần suy luận nhiều tầng — việc của LLM chỉ là diễn đạt
+          // lại context. Đo thực tế: 816 → 318 token cho cùng câu trả lời.
+          thinkingConfig: { thinkingLevel: 'minimal' },
+        },
+      },
+    };
+  }
+
+  async answer(
+    question: string,
+    chunks: RetrievedChunk[],
+    history: ChatTurn[] = [],
+  ): Promise<RagAnswer> {
+    const prep = this.prepare(question, chunks, history);
+
+    if (!prep.canAnswer) {
+      return {
+        answer: KHONG_BIET,
+        citations: [],
+        confidence: prep.confidence,
+        usedLlm: false,
+        tokensUsed: 0,
+      };
+    }
+
+    const { text, tokens } = await this.callGemini(prep.body);
+
+    return {
+      answer: text,
+      citations: prep.citations,
+      confidence: prep.confidence,
       usedLlm: true,
       tokensUsed: tokens,
     };
+  }
+
+  /**
+   * Bản stream của answer(): trả về từng mẩu chữ ngay khi Gemini sinh ra,
+   * thay vì đợi cả câu trả lời hoàn chỉnh.
+   *
+   * Khách thấy chữ chạy sau ~400ms thay vì nhìn ba chấm 2-3 giây. Tổng thời
+   * gian không đổi, nhưng cảm nhận khác hẳn.
+   */
+  async *answerStream(
+    question: string,
+    chunks: RetrievedChunk[],
+    history: ChatTurn[] = [],
+  ): AsyncGenerator<AnswerChunk> {
+    const prep = this.prepare(question, chunks, history);
+
+    // Không trả lời được → phát nguyên câu "không biết" thành một mẩu duy nhất
+    // rồi kết thúc. Không gọi LLM, không tốn token, trả về tức thì.
+    if (!prep.canAnswer) {
+      yield { type: 'delta', text: KHONG_BIET };
+      yield {
+        type: 'end',
+        citations: [],
+        confidence: prep.confidence,
+        usedLlm: false,
+        tokensUsed: 0,
+      };
+      return;
+    }
+
+    let tokensUsed = 0;
+    for await (const piece of this.streamGemini(prep.body)) {
+      if (piece.text) yield { type: 'delta', text: piece.text };
+      // usageMetadata là con số CỘNG DỒN, mẩu cuối mang tổng cuối cùng
+      if (piece.tokens) tokensUsed = piece.tokens;
+    }
+
+    yield {
+      type: 'end',
+      citations: prep.citations,
+      confidence: prep.confidence,
+      usedLlm: true,
+      tokensUsed,
+    };
+  }
+
+  /**
+   * Gọi endpoint streaming của Gemini và bóc từng mẩu text.
+   *
+   * Định dạng trả về là SSE: mỗi sự kiện một dòng `data: {json}`, cách nhau
+   * bằng dòng trống. Phần text nằm ở candidates[0].content.parts[0].text và
+   * là phần THÊM VÀO, không phải toàn bộ câu trả lời tính tới lúc đó.
+   */
+  private async *streamGemini(
+    body: unknown,
+  ): AsyncGenerator<{ text?: string; tokens?: number }> {
+    const res = await fetch(`${STREAM_ENDPOINT}?alt=sse`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': process.env.LLM_API_KEY ?? '',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`LLM lỗi ${res.status}: ${await res.text()}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      // stream: true để ký tự nhiều byte (tiếng Việt có dấu) bị cắt giữa hai
+      // gói TCP vẫn được ghép lại đúng thay vì thành ký tự hỏng.
+      buffer += decoder.decode(value, { stream: true });
+
+      // Một gói TCP có thể chứa nửa dòng. Giữ lại phần đuôi chưa trọn vẹn.
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const json = JSON.parse(line.slice(6)) as GeminiResponse;
+          yield {
+            text: json.candidates?.[0]?.content?.parts?.[0]?.text,
+            tokens: json.usageMetadata?.totalTokenCount,
+          };
+        } catch {
+          // Dòng JSON hỏng thì bỏ qua mẩu đó, không làm sập cả stream
+        }
+      }
+    }
   }
 
   /** Gọi Gemini và bóc text ra. Nơi duy nhất trong dự án chạm tới HTTP của LLM. */
