@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Website giả lập của khách hàng</title>
+    <style>
+      /* CSS "hung hãn" cố tình đặt ở đây để chứng minh Shadow DOM cách ly được:
+         nếu widget không dùng Shadow DOM, mấy dòng này sẽ phá nát nó. */
+      * { box-sizing: content-box; }
+      button { background: red !important; font-size: 30px; border: 5px dashed lime; }
+      div { border: 1px solid transparent; }
+      input { text-transform: uppercase; }
+
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 60px auto;
+        padding: 0 20px;
+        color: #333;
+        line-height: 1.7;
+      }
+      h1 { font-size: 28px; }
+      .note {
+        background: #fff7ed;
+        border-left: 3px solid #f59e0b;
+        padding: 12px 16px;
+        margin: 24px 0;
+      }
+      code { background: #f4f4f5; padding: 2px 6px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>Cửa hàng ACME</h1>
+    <p>
+      Đây là trang giả lập website của khách hàng, chạy ở một origin khác với
+      backend. Widget phải hiện ở góc phải dưới và trả lời được câu hỏi.
+    </p>
+
+    <div class="note">
+      <strong>Trang này cố tình có CSS phá hoại</strong> — mọi
+      <code>button</code> bị ép nền đỏ, viền xanh lá nét đứt, chữ 30px. Nếu
+      widget vẫn đẹp thì Shadow DOM đang làm đúng việc.
+    </div>
+
+    <button>Nút của trang chủ nhà (phải xấu)</button>
+
+    <p>Thử hỏi widget: <em>"Tôi muốn hoàn tiền thì làm sao?"</em></p>
+
+    <!-- Đây chính là snippet mà dashboard sẽ sinh ra cho khách hàng.
+         async là BẮT BUỘC: không có nó, trình duyệt dừng phân tích HTML để
+         chờ tải xong widget → website khách hàng chậm đi thấy rõ. -->
+    <script async src="http://localhost:3000/public/widget.js" data-key="pk_nArBOAdr74GHwBtPdq1ZS8SyD_s7UgEC"></script>
+  </body>
+</html>

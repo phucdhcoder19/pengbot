@@ -5,11 +5,10 @@
  * nào được import mock-data.ts trực tiếp — giữ được quy tắc đó thì lúc nối
  * backend thật, chỉ file này thay đổi.
  *
- * ĐỔI SANG BACKEND THẬT:
- *   1. Đặt USE_MOCK = false (hoặc VITE_USE_MOCK=false trong .env).
- *   2. Đặt VITE_API_URL trỏ tới NestJS, ví dụ http://localhost:3000/api.
- *   3. Xoá src/lib/mock-data.ts và các nhánh `if (USE_MOCK)` bên dưới.
- * Chữ ký hàm và kiểu trả về giữ nguyên, nên không trang nào phải sửa.
+ * ĐÃ NỐI BACKEND THẬT. Đặt VITE_USE_MOCK=true trong .env để quay lại dữ liệu
+ * giả (tiện khi backend chưa chạy hoặc muốn dựng giao diện offline).
+ *
+ * Không trang nào phải sửa khi chuyển đổi — đó là mục đích của lớp này.
  */
 
 import axios, { AxiosError } from "axios";
@@ -27,8 +26,8 @@ import type {
 } from "./types";
 import * as mock from "./mock-data";
 
-// ⬇⬇⬇ ĐỔI Ở ĐÂY khi backend sẵn sàng ⬇⬇⬇
-const USE_MOCK: boolean = true;
+/** Mặc định gọi backend thật. Đặt VITE_USE_MOCK=true để chạy offline. */
+const USE_MOCK: boolean = import.meta.env.VITE_USE_MOCK === "true";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api";
 const TOKEN_KEY = "pengbot.token";
@@ -56,19 +55,27 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
-/** Đưa lỗi mạng/HTTP về một kiểu duy nhất, đã có câu tiếng Việt để hiển thị. */
-http.interceptors.response.use(undefined, (error: AxiosError<{ message?: string }>) => {
+/** Đưa lỗi mạng/HTTP về một kiểu duy nhất, đã có câu sẵn để hiển thị. */
+http.interceptors.response.use(undefined, (error: AxiosError<{ message?: string | string[] }>) => {
   if (!error.response) {
     throw new ApiError("Can't reach the server. Check your connection.", 0);
   }
   const { status, data } = error.response;
+
+  // Token hết hạn hoặc bị thu hồi → dọn ngay, đừng để lần gọi sau lại 401.
+  // KHÔNG redirect ở đây: RequireAuth lo việc đó, làm cả hai là đá nhau.
+  if (status === 401) clearToken();
+
+  // class-validator trả về message dạng MẢNG khi có nhiều lỗi cùng lúc.
+  const message = Array.isArray(data?.message) ? data.message[0] : data?.message;
+
   const fallback =
     status === 401
       ? "Your session has expired. Please sign in again."
       : status >= 500
         ? "The server ran into a problem. Try again in a few minutes."
         : "Invalid request.";
-  throw new ApiError(data?.message ?? fallback, status);
+  throw new ApiError(message ?? fallback, status);
 });
 
 /** Độ trễ giả 300–800ms để nhìn thấy đúng các trạng thái đang tải. */
@@ -128,7 +135,8 @@ export async function register(
 
 export async function getMe(): Promise<Session> {
   if (!USE_MOCK) {
-    const { data } = await http.get<Session>("/auth/me");
+    // Backend đặt route là /api/me, KHÔNG phải /api/auth/me
+    const { data } = await http.get<Session>("/me");
     return data;
   }
   await delay();
@@ -224,7 +232,12 @@ export async function listConversations(page = 1): Promise<Paginated<Conversatio
 export async function getConversation(id: string): Promise<ConversationDetail> {
   if (!USE_MOCK) {
     const { data } = await http.get<ConversationDetail>(`/conversations/${id}`);
-    return data;
+    return {
+      ...data,
+      // Message.citations là cột Json? — tin nhắn của KHÁCH không có nguồn nên
+      // backend trả null. Chuẩn hoá về mảng rỗng để component cứ .map() thoải mái.
+      messages: data.messages.map((m) => ({ ...m, citations: m.citations ?? [] })),
+    };
   }
   await delay();
   requireSession();
@@ -239,7 +252,13 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
 export async function getUsage(days = 30): Promise<Usage> {
   if (!USE_MOCK) {
     const { data } = await http.get<Usage>("/usage", { params: { days } });
-    return data;
+    return {
+      ...data,
+      // Postgres date_trunc trả kiểu date, JSON hoá thành "2026-08-15T00:00:00.000Z".
+      // format.ts lại ghép `${iso}T00:00:00` nên cần đúng dạng YYYY-MM-DD,
+      // không cắt là ra Invalid Date và biểu đồ trống trơn.
+      daily: data.daily.map((d) => ({ ...d, date: String(d.date).slice(0, 10) })),
+    };
   }
   await delay();
   requireSession();
