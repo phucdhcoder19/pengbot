@@ -411,7 +411,8 @@ GET    /api/usage                → số tin nhắn AI tháng này
 ### Public Widget API — `/public/*`, dùng publicKey
 
 ```
-GET  /public/widget.js           → file JS của widget (static)
+GET  /public/widget.js           → loader của widget (static, ~2KB)
+GET  /public/widget-core.js      → khung chat, loader nạp khi bấm bong bóng
 POST /public/chat                { publicKey, conversationId?, message } → { answer, citations }
 GET  /public/config?key=...      → { name, primaryColor, greeting }
 ```
@@ -468,12 +469,12 @@ pengbot/
 │       ├── auth/                 register, login, JwtStrategy
 │       ├── documents/            upload, list, delete
 │       ├── ingest/               BullMQ producer + processor, chunker, embedder
-│       ├── rag/                  retriever (raw SQL) + answerer (Claude)
+│       ├── rag/                  retriever (hybrid: vector + full-text → RRF) + answerer
 │       ├── chat/                 public chat endpoint
-│       ├── widget/               serve widget.js + snippet
+│       ├── widget/               serve loader.js (/public/widget.js) + core.js + config
 │       └── billing/              Stripe (giai đoạn cuối)
 ├── client/                       React dashboard
-└── widget/                       vanilla JS source
+└── widget/                       vanilla JS: loader.js (bong bóng) + core.js (khung chat)
 ```
 
 ---
@@ -516,7 +517,7 @@ Làm **tuần tự**. Mỗi giai đoạn có "Xong khi" rõ ràng — đừng sa
 > 💡 **Validate với MỘT tenant trước.** Cho RAG chạy được đã, rồi mới lo scale nhiều tenant.
 
 ### Giai đoạn 4 — Widget nhúng
-- `widget/widget.js` vanilla: bong bóng chat, khung chat, gọi `/public/chat`.
+- `widget/loader.js` (~2KB, phục vụ tại `/public/widget.js`): vẽ bong bóng, bấm mới nạp `core.js` (`/public/widget-core.js`) — khung chat, gọi `/public/chat/stream`.
 - Snippet: `<script src="http://localhost:3000/public/widget.js" data-key="pk_..."></script>`
 - Tự tạo + lưu `visitorId` trong localStorage.
 

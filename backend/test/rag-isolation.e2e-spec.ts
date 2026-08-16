@@ -66,7 +66,10 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
     });
     box.docId = doc.id;
 
-    const [vector] = await embeddings.embedBatch([noiDung], 'RETRIEVAL_DOCUMENT');
+    const [vector] = await embeddings.embedBatch(
+      [noiDung],
+      'RETRIEVAL_DOCUMENT',
+    );
 
     await prisma.$executeRaw`
       INSERT INTO "Chunk"
@@ -145,6 +148,29 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
     const gop = chunks.map((c) => c.content).join(' ');
     expect(gop).toContain('GLOBEX');
     expect(gop).not.toContain('ACME');
+  });
+
+  // Hybrid search: retriever có HAI câu $queryRaw (vector + từ khoá).
+  // Hai bài dưới canh câu thứ hai — vector giả tất định nên "GLOBEX" chỉ có
+  // thể lọt sang A qua nhánh từ khoá nếu nó thiếu WHERE tenantId.
+
+  it('nhánh từ khoá tìm ra chunk theo chuỗi chính xác', async () => {
+    const chunks = await TenantContext.run({ tenantId: A.tenantId }, () =>
+      retriever.retrieve('ACME'),
+    );
+    const hit = chunks.find((c) => c.content.includes('ACME'));
+    expect(hit).toBeDefined();
+    expect(hit!.keywordRank).toBe(1);
+  });
+
+  it('⭐ A hỏi đúng tên riêng của B → nhánh từ khoá vẫn KHÔNG trả chunk của B', async () => {
+    const chunks = await TenantContext.run({ tenantId: A.tenantId }, () =>
+      retriever.retrieve('GLOBEX nam phan tram'),
+    );
+    for (const c of chunks) {
+      expect(c.documentId).toBe(A.docId);
+      expect(c.content).not.toContain('GLOBEX');
+    }
   });
 
   it('không có TenantContext → retriever ném lỗi thay vì quét cả bảng', async () => {

@@ -98,11 +98,21 @@ model Chunk {
   /// 1536 chiều = OpenAI text-embedding-3-small. Đổi số này = phải re-embed toàn bộ.
   embedding Unsupported("vector(1536)")?
 
+  /// Full-text search cho nhánh từ khoá của hybrid search.
+  /// Cột GENERATED: Postgres tự tính từ `content` (xem migration add_chunk_tsv),
+  /// code KHÔNG BAO GIỜ ghi vào cột này. Prisma không hiểu tsvector nên khai
+  /// Unsupported. Nó nhìn biểu thức generated như một DEFAULT — phải khai đúng
+  /// y hệt chuỗi introspect ra (`prisma db pull --print`), thiếu là bị coi là
+  /// drift và `migrate dev` đòi reset DB.
+  tsv Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, content)"))
+
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, chunkIndex])
   @@index([tenantId])
+  /// GIN là loại index dành cho tsvector (giống HNSW dành cho vector).
+  @@index([tsv], type: Gin)
 }
 
 // ─────────────────────────── Chat ───────────────────────────

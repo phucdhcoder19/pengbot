@@ -1,3 +1,15 @@
+# ── Hai cách dùng ──────────────────────────────────────────────────────────
+#
+#   docker compose up -d
+#     → CHỈ Postgres + Redis. Dùng khi phát triển: chạy backend và client bằng
+#       `npm run dev` bên ngoài để có hot-reload.
+#
+#   docker compose --profile full up -d --build
+#     → Chạy TẤT CẢ, gồm cả backend và dashboard. Dùng để thử bản đóng gói
+#       hoặc demo mà không cần cài Node.
+#
+# Backend và client nằm sau profile "full" nên lệnh đầu tiên không đụng tới.
+
 services:
   postgres:
     image: pgvector/pgvector:pg16 # ⚠️ dùng image này, KHÔNG dùng postgres thường
@@ -7,8 +19,58 @@ services:
       POSTGRES_DB: pengbot
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      # api chờ healthcheck này rồi mới khởi động — không có nó thì lần
+      # `migrate deploy` đầu tiên chạy trước khi Postgres sẵn sàng và chết.
+      test: ["CMD-SHELL", "pg_isready -U dev -d pengbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: ["full"]
+    build:
+      context: . # thư mục GỐC — runtime cần cả widget/widget.js
+      dockerfile: Dockerfile
+    ports: ["3000:3000"]
+    environment:
+      # Trong mạng của compose, host là TÊN SERVICE chứ không phải localhost
+      DATABASE_URL: postgresql://dev:dev@postgres:5432/pengbot
+      REDIS_URL: redis://redis:6379
+      CLIENT_URL: http://localhost:5173
+      JWT_SECRET: ${JWT_SECRET:-doi-thanh-chuoi-ngau-nhien-dai}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?can EMBEDDING_API_KEY trong .env o thu muc goc}
+      LLM_API_KEY: ${LLM_API_KEY:?can LLM_API_KEY trong .env o thu muc goc}
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash}
+      RAG_MAX_DISTANCE: ${RAG_MAX_DISTANCE:-0.40}
+      RAG_TOP_K: ${RAG_TOP_K:-5}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      # Giữ file của tài liệu FAILED qua các lần khởi động lại, để còn điều tra
+      - uploads:/app/backend/uploads
+
+  client:
+    profiles: ["full"]
+    build:
+      context: ./client
+      args:
+        # Vite nhúng biến này vào bundle lúc BUILD. Đây là địa chỉ mà TRÌNH
+        # DUYỆT gọi, nên phải là localhost — không phải "api" như bên trong mạng.
+        VITE_API_URL: http://localhost:3000/api
+    ports: ["5173:80"]
+    depends_on: [api]
+
 volumes:
   pgdata:
+  uploads:

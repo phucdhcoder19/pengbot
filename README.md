@@ -87,14 +87,41 @@ The split matters: middleware **identifies**, guards **authorize**, and the Pris
 
 ## Running locally
 
-### 1. Infrastructure
+There are two ways to run this.
+
+### Everything in Docker (one command)
 
 ```bash
-docker compose up -d
-docker compose ps        # postgres and redis must be "running"
+cp backend/.env.example .env     # fill in EMBEDDING_API_KEY and LLM_API_KEY
+docker compose --profile full up -d --build
 ```
 
-### 2. Backend
+| | |
+|---|---|
+| Dashboard | http://localhost:5173 |
+| API | http://localhost:3000 |
+
+Good for a demo or for checking the packaged build. No Node installation required.
+
+```bash
+docker compose --profile full down     # stop everything
+docker compose --profile full logs -f api
+```
+
+> `VITE_API_URL` is baked into the bundle at **build** time, not read at runtime. Deploying the dashboard to a different API host means rebuilding the client image with a new `--build-arg`.
+
+### Development (hot reload)
+
+Infrastructure in Docker, apps on the host.
+
+#### 1. Infrastructure
+
+```bash
+docker compose up -d     # postgres + redis only; api/client sit behind the "full" profile
+docker compose ps
+```
+
+#### 2. Backend
 
 ```bash
 cd backend
@@ -109,7 +136,7 @@ Get a Gemini key at **https://aistudio.google.com/apikey**.
 
 > Without a key the whole ingest pipeline still runs — `EmbeddingService` falls back to deterministic fake vectors. Only answer quality is meaningless.
 
-### 3. Dashboard
+#### 3. Dashboard
 
 ```bash
 cd client
@@ -120,7 +147,7 @@ npm run dev              # http://localhost:5173
 
 Set `VITE_USE_MOCK=true` to run the entire UI against in-memory fixtures with no backend at all — useful for design work or when the API is down.
 
-### 4. Try the widget
+#### 4. Try the widget
 
 Open `widget/test.html` in a browser and replace `data-key` with the publicKey shown on your Settings page.
 
@@ -175,7 +202,8 @@ Remember to revert.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/public/widget.js` | widget source, cached 5 minutes |
+| GET | `/public/widget.js` | widget **loader** (~2KB, draws the bubble), cached 5 minutes |
+| GET | `/public/widget-core.js` | chat panel, loaded only when the bubble is clicked |
 | GET | `/public/config?key=pk_...` | appearance settings only |
 | POST | `/public/chat` | single JSON response |
 | POST | `/public/chat/stream` | **SSE** — what the widget uses |
@@ -183,6 +211,24 @@ Remember to revert.
 ---
 
 ## Design decisions worth calling out
+
+### Hybrid search: vector + full-text, fused with RRF
+
+Pure vector search is blind to exact strings — an order code like `ACM-2024-3391`, a hotline number, an unusual product name. The embedding sees a meaningless token and the right chunk lands at the bottom. Full-text search has the opposite profile: it nails exact tokens but cannot tell "shipping fee" from "delivery cost".
+
+So the retriever runs **both** and merges them with Reciprocal Rank Fusion:
+
+```
+vector branch   : top 20 by cosine distance          (meaning)
+keyword branch  : top 20 by Postgres ts_rank         (exact words)
+RRF             : score = Σ 1/(60 + rank) per branch → sort → top 5
+```
+
+RRF adds *ranks*, not raw scores, because cosine distance and ts_rank live on unrelated scales. A chunk that both branches like ends up with roughly twice the score of one only a single branch found — agreement wins.
+
+Full-text search is built into Postgres: a `GENERATED` `tsvector` column on `Chunk` plus a GIN index, no extra service. The keyword query is OR-ed (a chunk matching only the rare token still surfaces) and Vietnamese stop-words are stripped in code because `ts_rank` has no IDF and Postgres has no Vietnamese dictionary. `RAG_CANDIDATES` (default 20) sets the per-branch pool.
+
+The confidence gate is unchanged in spirit: answering still requires at least one chunk close in *meaning*; once that anchor exists, keyword-only chunks ride along into the context.
 
 ### Confidence gate before calling the LLM
 
@@ -236,7 +282,7 @@ docker run -p 3000:3000 --env-file backend/.env pengbot-api
 
 The container runs `prisma migrate deploy` before starting.
 
-Build context must be the repo root because the runtime image also needs `widget/widget.js` to serve `/public/widget.js`.
+Build context must be the repo root because the runtime image also needs `widget/` (loader.js + core.js) to serve `/public/widget.js` and `/public/widget-core.js`.
 
 ### Before exposing to the internet
 
@@ -286,12 +332,12 @@ pengbot/
 │       ├── auth/             register, login
 │       ├── documents/        upload, list, delete
 │       ├── ingest/           chunker, embeddings, text extraction, BullMQ worker
-│       ├── rag/              retriever (raw SQL) + answerer (prompts, streaming)
+│       ├── rag/              retriever (hybrid: vector + full-text, RRF) + answerer
 │       ├── chat/             /public/chat and /public/chat/stream
 │       ├── conversations/    dashboard API
 │       ├── tenant/           /api/me, PATCH /api/tenant, /api/usage
-│       └── widget/           serves widget.js + config
+│       └── widget/           serves loader.js / core.js + config
 ├── client/                   React dashboard
-├── widget/                   widget.js + test.html
+├── widget/                   loader.js (bubble) + core.js (chat panel) + test.html
 └── docs/                     phase-by-phase build notes (Vietnamese)
 ```

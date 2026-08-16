@@ -1,5 +1,5 @@
 # Build context là THƯ MỤC GỐC dự án, không phải backend/ — vì runtime cần cả
-# widget/widget.js để phục vụ route /public/widget.js.
+# widget/ (loader.js + core.js) để phục vụ /public/widget.js và /public/widget-core.js.
 #   docker build -t pengbot-api .
 
 # ─────────────────────────── 1. Cài dependency ───────────────────────────
@@ -40,11 +40,15 @@ COPY backend/prisma.config.ts ./prisma.config.ts
 
 # widget/ nằm ngoài backend/ nên cần build context ở thư mục gốc
 COPY widget /app/widget
-ENV WIDGET_PATH=/app/widget/widget.js
+ENV WIDGET_DIR=/app/widget
 
 # File khách upload. Gắn volume vào đây nếu muốn giữ lại tài liệu FAILED
 # để điều tra; bình thường file được xoá ngay sau khi ingest thành công.
-RUN mkdir -p uploads
+#
+# ⚠️ chown BẮT BUỘC: mặc định thư mục thuộc root, mà container chạy bằng user
+# `node` → multer ném EACCES ngay lần upload đầu. Docker chép quyền của thư mục
+# này sang named volume lúc tạo mới, nên phải đặt đúng từ trong image.
+RUN mkdir -p uploads && chown -R node:node uploads
 
 # Chạy bằng user không phải root
 USER node

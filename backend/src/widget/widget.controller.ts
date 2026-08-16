@@ -14,16 +14,20 @@ import { TenantContext } from '../common/tenant/tenant.context';
 import { PublicWidgetGuard } from '../common/tenant/public-widget.guard';
 
 /// widget/ nằm ngoài backend/ nên đường dẫn tính từ cwd (là backend/ khi chạy).
-/// Đặt WIDGET_PATH trong .env để trỏ đi chỗ khác lúc deploy.
-const WIDGET_FILE =
-  process.env.WIDGET_PATH ?? join(process.cwd(), '..', 'widget', 'widget.js');
+/// Đặt WIDGET_DIR trong .env để trỏ đi chỗ khác lúc deploy.
+const WIDGET_DIR =
+  process.env.WIDGET_DIR ?? join(process.cwd(), '..', 'widget');
 
 @Controller('public')
 export class WidgetController {
   constructor(@Inject(PRISMA) private readonly prisma: ExtendedPrismaClient) {}
 
   /**
-   * Phục vụ file widget.js cho thẻ <script> trên website khách hàng.
+   * Phục vụ LOADER cho thẻ <script> trên website khách hàng.
+   *
+   * URL vẫn là widget.js (snippet đã phát cho khách không đổi), nhưng nội dung
+   * giờ chỉ là loader ~2KB: vẽ bong bóng, và khi người dùng bấm mới nạp
+   * widget-core.js. Xem widget/loader.js.
    *
    * KHÔNG gắn guard: publicKey nằm ở thuộc tính data-key của thẻ script,
    * trình duyệt không gửi nó khi tải file. File này giống hệt nhau cho mọi
@@ -34,11 +38,24 @@ export class WidgetController {
   // 5 phút: đủ để không bị tải lại mỗi lần chuyển trang, đủ ngắn để sửa lỗi
   // không phải chờ khách xoá cache.
   @Header('Cache-Control', 'public, max-age=300')
-  async widgetJs(): Promise<string> {
+  widgetJs(): Promise<string> {
+    return this.serveWidgetFile('loader.js');
+  }
+
+  /** Phần thân widget, chỉ được loader nạp khi người dùng bấm bong bóng. */
+  @Get('widget-core.js')
+  @Header('Content-Type', 'application/javascript; charset=utf-8')
+  @Header('Cache-Control', 'public, max-age=300')
+  widgetCoreJs(): Promise<string> {
+    return this.serveWidgetFile('core.js');
+  }
+
+  private async serveWidgetFile(name: string): Promise<string> {
+    const file = join(WIDGET_DIR, name);
     try {
-      return await readFile(WIDGET_FILE, 'utf8');
+      return await readFile(file, 'utf8');
     } catch {
-      throw new NotFoundException(`Không đọc được widget tại ${WIDGET_FILE}`);
+      throw new NotFoundException(`Không đọc được widget tại ${file}`);
     }
   }
 

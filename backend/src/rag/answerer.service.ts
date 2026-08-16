@@ -76,12 +76,18 @@ export class AnswererService {
    * Không bao giờ ném lỗi: hỏng thì trả về câu gốc. Viết lại là cải thiện,
    * không phải điều kiện tiên quyết — đừng để nó làm sập cả request.
    */
-  async rewriteQuestion(question: string, history: ChatTurn[]): Promise<string> {
+  async rewriteQuestion(
+    question: string,
+    history: ChatTurn[],
+  ): Promise<string> {
     if (!history.length) return question;
 
     try {
       const lichSu = history
-        .map((t) => `${t.role === 'USER' ? 'Khách' : 'Trợ lý'}: ${sanitize(t.content)}`)
+        .map(
+          (t) =>
+            `${t.role === 'USER' ? 'Khách' : 'Trợ lý'}: ${sanitize(t.content)}`,
+        )
         .join('\n');
 
       const { text } = await this.callGemini({
@@ -125,19 +131,37 @@ export class AnswererService {
    * đúng một logic chốt chặn. Chép đôi ra là sớm muộn cũng lệch nhau.
    * Hàm thuần, không chạm mạng.
    */
-  private prepare(question: string, chunks: RetrievedChunk[], history: ChatTurn[]) {
+  private prepare(
+    question: string,
+    chunks: RetrievedChunk[],
+    history: ChatTurn[],
+  ) {
     const maxDistance = Number(process.env.RAG_MAX_DISTANCE ?? 0.4);
 
     // ⭐ Chốt chặn tin cậy — đặt TRƯỚC khi gọi LLM.
     // Không có chunk nào đủ gần thì trả lời "không biết" luôn: vừa chặn bịa đặt,
     // vừa không tốn tiền, vừa trả lời tức thì cho câu hỏi ngoài phạm vi.
-    const relevant = chunks.filter((c) => c.distance <= maxDistance);
-    if (!relevant.length) {
+    //
+    // Từ khi có hybrid search, chunk có thể đến từ nhánh từ khoá với distance
+    // lớn (vd chứa mã đơn "ACM-2024-3391" — vector không hiểu chuỗi đó).
+    // Hai quyết định tách bạch:
+    //   1. CÓ TRẢ LỜI KHÔNG: vẫn đòi ít nhất một chunk gần về NGHĨA (neo).
+    //      Chỉ trúng từ khoá thì chưa đủ mở cửa — ts_rank không có IDF nên
+    //      trúng một từ phổ biến ("hàng") không nói lên gì; giữ nguyên hành vi
+    //      từ chối câu hỏi ngoài phạm vi.
+    //   2. ĐƯA GÌ VÀO CONTEXT: đã có neo rồi thì chunk trúng từ khoá được đi
+    //      kèm dù distance xa — đó chính là thứ hybrid search bổ sung.
+    const semantic = chunks.filter((c) => c.distance <= maxDistance);
+    if (!semantic.length) {
       return {
         canAnswer: false as const,
-        confidence: chunks.length ? toConfidence(chunks[0].distance) : 0,
+        confidence: chunks.length ? toConfidence(bestDistance(chunks)) : 0,
       };
     }
+    // Giữ thứ tự RRF của retriever (đồng thuận cả hai nhánh lên đầu).
+    const relevant = chunks.filter(
+      (c) => c.distance <= maxDistance || c.keywordRank != null,
+    );
 
     const context = relevant
       .map((c, i) => `[${i + 1}] (${c.documentTitle}) ${sanitize(c.content)}`)
@@ -148,7 +172,9 @@ export class AnswererService {
       // Một citation cho mỗi TÀI LIỆU, không phải mỗi chunk — 5 chunk cùng
       // một file thì hiện 5 dòng "Nguồn: ..." giống hệt nhau là vô nghĩa.
       citations: dedupeByDocument(relevant),
-      confidence: toConfidence(relevant[0].distance),
+      // Confidence vẫn tính từ độ gần về nghĩa — điểm RRF không có thang tuyệt
+      // đối để quy ra 0..1. relevant không còn sắp theo distance nên phải tìm min.
+      confidence: toConfidence(bestDistance(semantic)),
       body: {
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         // Lịch sử đi vào contents dưới dạng nhiều lượt hội thoại thật, không
@@ -356,17 +382,25 @@ function toConfidence(distance: number): number {
   return Math.max(0, Math.min(1, 1 - distance / 2));
 }
 
+/// Distance nhỏ nhất trong danh sách (chunk gần nhất về nghĩa).
+function bestDistance(chunks: RetrievedChunk[]): number {
+  return Math.min(...chunks.map((c) => c.distance));
+}
+
 /// Chunk là nội dung khách tự upload, câu hỏi là do khách gõ — cả hai đều có thể
 /// chứa đúng chuỗi "</context>" để thoát khỏi thẻ bao rồi chèn chỉ thị vào prompt.
 /// Vô hiệu hoá các thẻ đó. Đây là lớp chống injection thứ ba.
 function sanitize(text: string): string {
-  return text.replace(/<\/?(context|question|system|history|new_question)>/gi, '');
+  return text.replace(
+    /<\/?(context|question|system|history|new_question)>/gi,
+    '',
+  );
 }
 
 function dedupeByDocument(chunks: RetrievedChunk[]): Citation[] {
   const seen = new Map<string, Citation>();
   for (const c of chunks) {
-    // chunks đã sắp theo distance tăng dần → cái gặp đầu tiên là cái gần nhất
+    // chunks đã sắp theo điểm RRF giảm dần → cái gặp đầu tiên là cái liên quan nhất
     if (!seen.has(c.documentId)) {
       seen.set(c.documentId, {
         chunkId: c.id,
