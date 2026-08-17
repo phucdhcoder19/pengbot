@@ -193,8 +193,9 @@
     el.textContent += text;
     // Chỉ tự cuộn nếu khách đang ở gần đáy. Họ cuộn lên đọc lại đoạn cũ mà bị
     // giật xuống mỗi lần có chữ mới thì rất khó chịu.
-    var gan = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60;
-    if (gan) listEl.scrollTop = listEl.scrollHeight;
+    var nearBottom =
+      listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60;
+    if (nearBottom) listEl.scrollTop = listEl.scrollHeight;
   }
 
   function addCites(el, citations) {
@@ -241,14 +242,14 @@
 
   function done() {
     sending = false;
-    // Đang bị khoá vì 429 thì để nguyên; hẹn giờ trong khoaGui() sẽ mở lại.
+    // Đang bị khoá vì 429 thì để nguyên; hẹn giờ trong lockSending() sẽ mở lại.
     if (Date.now() >= blockedUntil) {
       sendBtn.disabled = false;
       inputEl.focus();
     }
   }
 
-  function loi() {
+  function showConnectionError() {
     typing(false);
     addMsg("bot", "Xin lỗi, không kết nối được. Bạn thử lại sau nhé.");
   }
@@ -261,7 +262,7 @@
    * bằng /public/chat, mà endpoint đó cũng đang bị chặn — thành ra tốn thêm
    * một request nữa rồi hiện nhầm "không kết nối được".
    */
-  function quaHanMuc(res) {
+  function showRateLimited(res) {
     return res
       .json()
       .catch(function () {
@@ -273,23 +274,23 @@
           "bot",
           body.message || "Bạn đang gửi hơi nhanh, thử lại sau ít phút nhé.",
         );
-        // Khoá ô nhập cho tới khi được phép gửi lại. Cho khách gõ tiếp rồi lại
-        // ăn 429 nữa thì vừa vô ích vừa khó chịu. Chặn trên trần 60 giây để
-        // quota tháng (resetAt còn hàng tuần) không khoá vĩnh viễn.
-        var cho = Math.min(Number(body.retryAfterSec) || 0, 60);
-        if (cho > 0) khoaGui(cho);
+        // Khoá ô nhập tới lúc được phép gửi lại. Để khách gõ tiếp rồi lại ăn
+        // 429 nữa thì vừa vô ích vừa khó chịu. Trần 60 giây để quota tháng
+        // (resetAt còn cách hàng tuần) không khoá widget vĩnh viễn.
+        var waitSec = Math.min(Number(body.retryAfterSec) || 0, 60);
+        if (waitSec > 0) lockSending(waitSec);
       });
   }
 
-  function khoaGui(giay) {
-    blockedUntil = Date.now() + giay * 1000;
+  function lockSending(seconds) {
+    blockedUntil = Date.now() + seconds * 1000;
     sendBtn.disabled = true;
     inputEl.disabled = true;
     setTimeout(function () {
       blockedUntil = 0;
       sendBtn.disabled = false;
       inputEl.disabled = false;
-    }, giay * 1000);
+    }, seconds * 1000);
   }
 
   function send(text) {
@@ -303,7 +304,7 @@
       body: payload(text),
     })
       .then(function (r) {
-        if (r.status === 429) return quaHanMuc(r);
+        if (r.status === 429) return showRateLimited(r);
         if (!r.ok) throw new Error("HTTP " + r.status);
         // Trình duyệt quá cũ không có ReadableStream → quay về bản không stream
         if (!r.body || !r.body.getReader) return sendPlain(text);
@@ -311,7 +312,7 @@
       })
       .catch(function () {
         // Endpoint stream hỏng (proxy chặn SSE chẳng hạn) → thử bản thường
-        return sendPlain(text).catch(loi);
+        return sendPlain(text).catch(showConnectionError);
       })
       .finally(done);
   }
@@ -382,7 +383,7 @@
       .then(function (r) {
         // Đường dự phòng cũng bị chặn như đường stream — xử lý y hệt.
         if (r.status === 429)
-          return quaHanMuc(r).then(function () {
+          return showRateLimited(r).then(function () {
             return null;
           });
         if (!r.ok) throw new Error("HTTP " + r.status);

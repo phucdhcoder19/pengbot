@@ -30,11 +30,11 @@ describe('Rate limit & quota (e2e)', () => {
 
   const stamp = Date.now();
   const T = { tenantId: '', publicKey: '' };
-  const rac: string[] = []; // key Redis cần dọn
+  const keysToClean: string[] = []; // key Redis cần dọn
 
   const rule = (name: string, limit: number, windowMs = 1000): Rule => {
     const key = `test:rl:${stamp}:${name}`;
-    if (!rac.includes(key)) rac.push(key);
+    if (!keysToClean.includes(key)) keysToClean.push(key);
     return { key, windowMs, limit, label: name };
   };
 
@@ -81,7 +81,7 @@ describe('Rate limit & quota (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (rac.length) await redis.del(...rac);
+    if (keysToClean.length) await redis.del(...keysToClean);
     await redis.del(`rl:t:${T.tenantId}`);
     await prisma.tenant.deleteMany({ where: { id: T.tenantId } });
     await app.close();
@@ -126,13 +126,13 @@ describe('Rate limit & quota (e2e)', () => {
     // Luật 1 rộng (10), luật 2 chật (1). Request thứ hai bị luật 2 chặn.
     // Nếu Lua ghi nhận từng luật thay vì kiểm hết rồi mới ghi, luật rộng đã
     // bị trừ một suất cho request chưa từng được phục vụ.
-    const rong = rule('rong', 10);
+    const wide = rule('wide', 10);
     const chatRule = rule('chat', 1);
 
-    expect((await rateLimit.check([rong, chatRule])).allowed).toBe(true);
-    expect((await rateLimit.check([rong, chatRule])).allowed).toBe(false);
+    expect((await rateLimit.check([wide, chatRule])).allowed).toBe(true);
+    expect((await rateLimit.check([wide, chatRule])).allowed).toBe(false);
 
-    expect(await redis.zcard(rong.key)).toBe(1);
+    expect(await redis.zcard(wide.key)).toBe(1);
   });
 
   it('hai request cùng mili giây vẫn tính thành hai', async () => {
@@ -147,17 +147,17 @@ describe('Rate limit & quota (e2e)', () => {
   });
 
   it('⭐ Redis chết → fail-open, không chặn khách', async () => {
-    const chet = new Redis('redis://127.0.0.1:1', {
+    const dead = new Redis('redis://127.0.0.1:1', {
       maxRetriesPerRequest: 0,
       enableOfflineQueue: false,
       lazyConnect: true,
       retryStrategy: () => null,
     });
-    chet.on('error', () => {}); // ioredis ném unhandled error nếu không nghe
-    const s = new RateLimitService(chet);
+    dead.on('error', () => {}); // ioredis ném unhandled error nếu không nghe
+    const s = new RateLimitService(dead);
 
-    expect(await s.check([rule('mac-ke', 1)])).toEqual({ allowed: true });
-    chet.disconnect();
+    expect(await s.check([rule('ignored', 1)])).toEqual({ allowed: true });
+    dead.disconnect();
   });
 
   // ───────────────── Tầng HTTP: /public/chat ─────────────────
@@ -167,29 +167,29 @@ describe('Rate limit & quota (e2e)', () => {
     const visitor = `v-burst-${stamp}`;
     const limit = Number(process.env.RATE_LIMIT_VISITOR_PER_MIN ?? 8);
 
-    let chan: request.Response | undefined;
+    let blocked: request.Response | undefined;
     for (let i = 0; i < limit + 2; i++) {
       const res = await chat(visitor);
       if (res.status === 429) {
-        chan = res;
+        blocked = res;
         break;
       }
       expect(res.status).toBe(200);
     }
 
-    expect(chan).toBeDefined();
-    expect(chan!.body.code).toBe('RATE_LIMITED');
-    expect(chan!.body.message).toContain('thử lại sau');
-    expect(chan!.body.retryAfterSec).toBeGreaterThanOrEqual(1);
-    expect(chan!.headers['retry-after']).toBeDefined();
+    expect(blocked).toBeDefined();
+    expect(blocked!.body.code).toBe('RATE_LIMITED');
+    expect(blocked!.body.message).toContain('thử lại sau');
+    expect(blocked!.body.retryAfterSec).toBeGreaterThanOrEqual(1);
+    expect(blocked!.headers['retry-after']).toBeDefined();
   }, 60_000);
 
   it('khách khác không bị vạ lây bởi trần của khách đang bị chặn', async () => {
     await reset();
-    const ke = `v-spam-${stamp}`;
+    const spammer = `v-spam-${stamp}`;
     const limit = Number(process.env.RATE_LIMIT_VISITOR_PER_MIN ?? 8);
 
-    for (let i = 0; i < limit + 1; i++) await chat(ke);
+    for (let i = 0; i < limit + 1; i++) await chat(spammer);
     // Khách kia phải vẫn gửi được — trần visitor tính riêng từng người.
     // (Trần IP rộng hơn nên chưa chạm ở đây.)
     await expect(
@@ -233,7 +233,7 @@ describe('Rate limit & quota (e2e)', () => {
   it('usage của tenant KHÁC không tính vào quota của mình', async () => {
     // Guard đếm qua Prisma extension (tự thêm WHERE tenantId) và cũng truyền
     // tenantId tường minh. Bài này canh cả hai lớp đó.
-    const khac = await request(http)
+    const other = await request(http)
       .post('/api/auth/register')
       .send({
         companyName: 'HangXom',
@@ -248,13 +248,13 @@ describe('Rate limit & quota (e2e)', () => {
       await request(http)
         .post('/public/chat')
         .send({
-          publicKey: khac.body.tenant.publicKey,
+          publicKey: other.body.tenant.publicKey,
           message: 'xin chao',
           visitorId: `v-hangxom-${stamp}`,
         })
         .expect(200);
     } finally {
-      await prisma.tenant.deleteMany({ where: { id: khac.body.tenant.id } });
+      await prisma.tenant.deleteMany({ where: { id: other.body.tenant.id } });
     }
   }, 60_000);
 });

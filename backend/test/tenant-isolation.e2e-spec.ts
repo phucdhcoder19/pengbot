@@ -127,10 +127,10 @@ describe('Cô lập tenant (e2e)', () => {
       .set('Authorization', `Bearer ${A.token}`)
       .expect(404);
 
-    const conNguyen = await prisma.document.findFirst({
+    const stillThere = await prisma.document.findFirst({
       where: { id: B.docId },
     });
-    expect(conNguyen).not.toBeNull();
+    expect(stillThere).not.toBeNull();
   });
 
   it('xoá tenant A → dữ liệu A biến mất, dữ liệu B nguyên vẹn (cascade)', async () => {

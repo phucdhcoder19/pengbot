@@ -18,7 +18,10 @@ async function bootstrap() {
   // mình được, và trần theo IP thành vô dụng.
   const trustProxy = process.env.TRUST_PROXY;
   if (trustProxy) {
-    app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+    app.set(
+      'trust proxy',
+      /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
+    );
   }
 
   app.enableCors((req: Request, cb) => {

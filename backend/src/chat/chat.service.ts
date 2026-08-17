@@ -32,7 +32,7 @@ const HISTORY_LIMIT = 6;
 /// một conversationId phình vô hạn.
 const MAX_MESSAGES_PER_CONVERSATION = 200;
 
-const LOI_HE_THONG =
+const SYSTEM_ERROR =
   'Xin lỗi, hệ thống đang gặp sự cố. Bạn vui lòng thử lại sau ít phút.';
 
 @Injectable()
@@ -109,7 +109,10 @@ export class ChatService {
     let tokensUsed = 0;
 
     try {
-      const standalone = await this.answerer.rewriteQuestion(dto.message, history);
+      const standalone = await this.answerer.rewriteQuestion(
+        dto.message,
+        history,
+      );
       const chunks = await this.retriever.retrieve(standalone);
 
       for await (const piece of this.answerer.answerStream(
@@ -130,17 +133,17 @@ export class ChatService {
 
       yield { type: 'done', citations, confidence };
     } catch (err) {
-      const chiTiet = err instanceof Error ? err.message : String(err);
-      this.log.error(`Stream hỏng: ${chiTiet}`);
+      const detail = err instanceof Error ? err.message : String(err);
+      this.log.error(`Stream hỏng: ${detail}`);
 
       // Đã phát được một phần chữ thì giữ nguyên phần đó rồi nối câu xin lỗi —
       // xoá đi trước mắt khách còn khó hiểu hơn.
-      full = full ? `${full}\n\n${LOI_HE_THONG}` : LOI_HE_THONG;
+      full = full ? `${full}\n\n${SYSTEM_ERROR}` : SYSTEM_ERROR;
       citations = [];
       confidence = 0;
       usedLlm = false;
 
-      yield { type: 'error', message: LOI_HE_THONG };
+      yield { type: 'error', message: SYSTEM_ERROR };
     }
 
     // Ghi sổ SAU KHI stream xong. Không thể ghi sớm hơn vì lúc đó chưa có
@@ -172,7 +175,11 @@ export class ChatService {
         } as any,
       }),
       ...(result.usedLlm
-        ? [this.prisma.usageEvent.create({ data: { type: 'AI_MESSAGE' } as any })]
+        ? [
+            this.prisma.usageEvent.create({
+              data: { type: 'AI_MESSAGE' } as any,
+            }),
+          ]
         : []),
       this.prisma.conversation.update({
         where: { id: conversationId },
@@ -199,13 +206,13 @@ export class ChatService {
       // tự hiểu ngữ cảnh và giữ được giọng hội thoại tự nhiên.
       return await this.answerer.answer(message, chunks, history);
     } catch (err) {
-      const chiTiet = err instanceof Error ? err.message : String(err);
-      this.log.error(`Không trả lời được: ${chiTiet}`);
+      const detail = err instanceof Error ? err.message : String(err);
+      this.log.error(`Không trả lời được: ${detail}`);
 
       // Vẫn trả về một RagAnswer hợp lệ để luồng chính ghi Message như thường.
       // Không có nó thì hội thoại có câu hỏi mà thiếu hẳn câu trả lời.
       return {
-        answer: LOI_HE_THONG,
+        answer: SYSTEM_ERROR,
         citations: [],
         confidence: 0,
         usedLlm: false, // KHÔNG tính tiền khách cho một lần hệ thống hỏng
@@ -223,12 +230,10 @@ export class ChatService {
       select: { role: true, content: true },
     });
 
-    return (
-      rows
-        .slice(1) // bỏ chính câu hỏi vừa lưu, nó không phải "lịch sử"
-        .reverse() // ...rồi đảo lại cho đúng thứ tự hội thoại
-        .map((m) => ({ role: m.role, content: m.content })) as ChatTurn[]
-    );
+    return rows
+      .slice(1) // bỏ chính câu hỏi vừa lưu, nó không phải "lịch sử"
+      .reverse() // ...rồi đảo lại cho đúng thứ tự hội thoại
+      .map((m) => ({ role: m.role, content: m.content }));
   }
 
   /** Tìm phiên cũ, không thấy hoặc đã quá dài thì mở phiên mới. */

@@ -33,9 +33,9 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
   const A = { token: '', tenantId: '', publicKey: '', docId: '' };
   const B = { token: '', tenantId: '', publicKey: '', docId: '' };
 
-  const NOI_DUNG_A =
+  const CONTENT_A =
     'Chinh sach hoan tien cua ACME. Hoan tien trong ba muoi ngay. Phi xu ly la khong dong.';
-  const NOI_DUNG_B =
+  const CONTENT_B =
     'Chinh sach hoan tien cua GLOBEX. Hoan tien trong bay ngay. Phi xu ly la nam phan tram.';
 
   /** Đăng ký công ty rồi nhét thẳng 1 Document + 1 Chunk có vector vào DB. */
@@ -104,8 +104,8 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
     retriever = app.get(RetrieverService);
     embeddings = app.get(EmbeddingService);
 
-    await seed(A, 'Acme', NOI_DUNG_A);
-    await seed(B, 'Globex', NOI_DUNG_B);
+    await seed(A, 'Acme', CONTENT_A);
+    await seed(B, 'Globex', CONTENT_B);
   });
 
   afterAll(async () => {
@@ -134,10 +134,10 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
       retriever.retrieve('phi xu ly hoan tien la bao nhieu'),
     );
 
-    const gop = chunks.map((c) => c.content).join(' ');
-    expect(gop).toContain('ACME');
-    expect(gop).not.toContain('GLOBEX');
-    expect(gop).not.toContain('nam phan tram'); // số liệu riêng của B
+    const joined = chunks.map((c) => c.content).join(' ');
+    expect(joined).toContain('ACME');
+    expect(joined).not.toContain('GLOBEX');
+    expect(joined).not.toContain('nam phan tram'); // số liệu riêng của B
   });
 
   it('B truy hồi → chỉ ra chunk của B', async () => {
@@ -145,9 +145,9 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
       retriever.retrieve('phi xu ly hoan tien la bao nhieu'),
     );
 
-    const gop = chunks.map((c) => c.content).join(' ');
-    expect(gop).toContain('GLOBEX');
-    expect(gop).not.toContain('ACME');
+    const joined = chunks.map((c) => c.content).join(' ');
+    expect(joined).toContain('GLOBEX');
+    expect(joined).not.toContain('ACME');
   });
 
   // Hybrid search: retriever có HAI câu $queryRaw (vector + từ khoá).
@@ -205,21 +205,21 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
   });
 
   it('⭐ B dùng conversationId của A → được cấp phiên MỚI, không đọc được phiên cũ', async () => {
-    const cuaA = await request(http)
+    const fromA = await request(http)
       .post('/public/chat')
       .send({ publicKey: A.publicKey, message: 'cau hoi cua A' })
       .expect(200);
 
-    const cuaB = await request(http)
+    const fromB = await request(http)
       .post('/public/chat')
       .send({
         publicKey: B.publicKey,
         message: 'cau hoi cua B',
-        conversationId: cuaA.body.conversationId,
+        conversationId: fromA.body.conversationId,
       })
       .expect(200);
 
-    expect(cuaB.body.conversationId).not.toBe(cuaA.body.conversationId);
+    expect(fromB.body.conversationId).not.toBe(fromA.body.conversationId);
   });
 
   it('/public/chat/stream trả về SSE đúng thứ tự meta → delta → done', async () => {
@@ -238,9 +238,9 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
     expect(events[0].type).toBe('meta');
     expect(events[0].conversationId).toBeTruthy();
 
-    const loai = events.map((e) => e.type);
-    expect(loai).toContain('delta');
-    expect(loai[loai.length - 1]).toBe('done');
+    const types = events.map((e) => e.type);
+    expect(types).toContain('delta');
+    expect(types[types.length - 1]).toBe('done');
 
     // Câu trả lời ghép từ các delta phải khớp Message đã lưu trong DB
     const full = events
@@ -262,13 +262,13 @@ describe('Cô lập tenant ở tầng RAG (e2e)', () => {
       .expect(401));
 
   it('Message luôn thuộc đúng tenant của Conversation', async () => {
-    const lech = await prisma.$queryRaw<{ lech: number }[]>`
-      SELECT count(*)::int AS lech
+    const mismatch = await prisma.$queryRaw<{ mismatch: number }[]>`
+      SELECT count(*)::int AS mismatch
       FROM "Message" m
       JOIN "Conversation" c ON c.id = m."conversationId"
       WHERE m."tenantId" IS DISTINCT FROM c."tenantId"
     `;
-    expect(lech[0].lech).toBe(0);
+    expect(mismatch[0].mismatch).toBe(0);
   });
 
   // ───────────── allowedDomains ─────────────

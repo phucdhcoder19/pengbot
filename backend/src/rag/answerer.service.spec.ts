@@ -107,7 +107,7 @@ describe('AnswererService — chunk đưa vào context (không gọi LLM thật)
     const { r, context } = await captureBody([
       chunk(0.2, { id: 'neo', content: 'phi van chuyen 25k' }),
       chunk(0.9, { id: 'kw', content: 'ma don ACM-2024-3391', keywordRank: 1 }),
-      chunk(0.9, { id: 'rac', content: 'khong lien quan' }), // xa và không từ khoá
+      chunk(0.9, { id: 'noise', content: 'khong lien quan' }), // xa và không từ khoá
     ]);
     expect(r.usedLlm).toBe(true);
     expect(context).toContain('ACM-2024-3391');
