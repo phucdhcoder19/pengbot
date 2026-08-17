@@ -19,6 +19,7 @@ import { ChatModule } from './chat/chat.module';
 import { TenantModule } from './tenant/tenant.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { WidgetModule } from './widget/widget.module';
+import { RedisModule } from './common/redis/redis.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { WidgetModule } from './widget/widget.module';
     }), // phải đứng ĐẦU — nạp .env trước
     AuthModule,
     PrismaModule,
+    RedisModule, // @Global — rate limit dùng, không phải chỉ BullMQ
     DocumentModule,
     IngestModule,
     RagModule,

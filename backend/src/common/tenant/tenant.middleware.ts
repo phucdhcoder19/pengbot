@@ -38,10 +38,14 @@ export class TenantMiddleware implements NestMiddleware {
     if (key) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { publicKey: key },
-        select: { id: true, allowedDomains: true },
+        select: { id: true, allowedDomains: true, plan: true },
       });
       if (tenant) {
-        return { tenantId: tenant.id, allowedDomains: tenant.allowedDomains };
+        return {
+          tenantId: tenant.id,
+          allowedDomains: tenant.allowedDomains,
+          plan: tenant.plan,
+        };
       }
     }
 

@@ -11,11 +11,16 @@ import type { Response } from 'express';
 import { ChatService } from './chat.service';
 import { ChatDto } from './dto/chat.dto';
 import { PublicWidgetGuard } from '../common/tenant/public-widget.guard';
+import { ChatRateLimitGuard } from '../common/rate-limit/chat-rate-limit.guard';
 
 /// Route công khai — KHÔNG gắn JwtAuthGuard. Khách vào website của công ty
 /// khách hàng thì không có tài khoản, chỉ có publicKey trong snippet.
+///
+/// Thứ tự guard có ý nghĩa: PublicWidgetGuard xác định tenant và kiểm Origin
+/// trước, ChatRateLimitGuard mới tính được hạn mức theo gói của tenant đó —
+/// và publicKey sai thì bị chặn mà không tốn lượt Redis nào.
 @Controller('public')
-@UseGuards(PublicWidgetGuard)
+@UseGuards(PublicWidgetGuard, ChatRateLimitGuard)
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 

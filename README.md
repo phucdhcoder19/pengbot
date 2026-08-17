@@ -205,12 +205,33 @@ Remember to revert.
 | GET | `/public/widget.js` | widget **loader** (~2KB, draws the bubble), cached 5 minutes |
 | GET | `/public/widget-core.js` | chat panel, loaded only when the bubble is clicked |
 | GET | `/public/config?key=pk_...` | appearance settings only |
-| POST | `/public/chat` | single JSON response |
-| POST | `/public/chat/stream` | **SSE** — what the widget uses |
+| POST | `/public/chat` | single JSON response, rate limited |
+| POST | `/public/chat/stream` | **SSE** — what the widget uses, rate limited |
 
 ---
 
 ## Design decisions worth calling out
+
+### Rate limiting and quota on the public endpoint
+
+`publicKey` is readable by anyone who views the customer's page source, and every chat request costs up to two LLM calls. Four gates sit in front of `/public/chat*`, cheapest first:
+
+```
+1. per visitor   8 req / 60s     sliding window in Redis  ┐
+2. per IP       30 req / 60s     sliding window in Redis  ├─ one Lua round-trip
+3. per tenant   plan-dependent   sliding window in Redis  ┘
+4. per tenant   plan-dependent AI messages / calendar month (UTC), counted in Postgres
+```
+
+Gates 1–3 run as a **single Lua script** that checks every rule before recording any of them. Recording rule-by-rule would let a request rejected by the last rule still consume a slot in the earlier ones — the visitor gets punished for a request that was never served. The window is a *sliding log* (ZSET of timestamps), not a fixed counter: a fixed window allows double the limit across its boundary, and at two LLM calls per request that gap is real money.
+
+If Redis is unreachable the burst gates **fail open** — rate limiting is a cost guard, not a security boundary, and refusing every visitor because of an auxiliary outage is the worse trade. The monthly quota still holds, because it counts `UsageEvent` rows in Postgres.
+
+Note that the quota counts only answers that actually called the LLM; a question rejected by the confidence gate is free of generation tokens but still costs an embedding, which is why the burst gates count *every* request.
+
+Limits per plan live in [`plan-limits.ts`](backend/src/common/rate-limit/plan-limits.ts); the per-visitor and per-IP numbers are `RATE_LIMIT_VISITOR_PER_MIN` / `RATE_LIMIT_IP_PER_MIN`. Behind nginx, set `TRUST_PROXY=1` or the IP gate lumps the whole internet into one bucket — but never set it to `true`, or callers can forge `X-Forwarded-For` and the gate becomes decorative.
+
+Both gates answer `429` with a Vietnamese message written for the end user, plus `Retry-After` and a `code` (`RATE_LIMITED` / `QUOTA_EXCEEDED`). The widget prints the message and locks its input until the window passes, instead of retrying against the non-streaming endpoint and showing a misleading network error.
 
 ### Hybrid search: vector + full-text, fused with RRF
 
@@ -286,7 +307,7 @@ Build context must be the repo root because the runtime image also needs `widget
 
 ### Before exposing to the internet
 
-- [ ] **Rate limiting** on `/public/chat` — each request costs up to two LLM calls, the endpoint is public, and `publicKey` is readable by anyone. `allowedDomains` does **not** help here because `curl` simply omits the `Origin` header.
+- [x] **Rate limiting** on `/public/chat` — done, see above. `allowedDomains` alone does **not** help, because `curl` simply omits the `Origin` header.
 - [ ] Replace `JWT_SECRET` with a long random string
 - [ ] Enable HTTPS (the widget needs a secure context for `crypto.randomUUID`)
 - [ ] Enable `compression` — the widget drops from 15 KB to 5.5 KB

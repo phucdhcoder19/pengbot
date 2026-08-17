@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { Plan } from '../../../generated/prisma/enums';
 
 export type TenantStore = {
   tenantId: string;
@@ -6,6 +7,9 @@ export type TenantStore = {
   /// Chỉ có ở request widget. Middleware đã phải nạp Tenant để tra publicKey
   /// nên lấy luôn, tránh guard phải truy vấn DB lần thứ hai.
   allowedDomains?: string[];
+  /// Cũng chỉ có ở request widget, lấy cùng lượt truy vấn trên.
+  /// ChatRateLimitGuard dùng để tra hạn mức (xem plan-limits.ts).
+  plan?: Plan;
 };
 
 const als = new AsyncLocalStorage<TenantStore>();

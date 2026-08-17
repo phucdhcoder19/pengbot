@@ -33,6 +33,8 @@
 
   var open = false;
   var sending = false;
+  /// Mốc thời gian được phép gửi lại sau khi bị 429 (0 = không bị khoá).
+  var blockedUntil = 0;
   var root = W.root;
   var wrap = W.wrap;
   var bubble = W.bubble;
@@ -221,7 +223,7 @@
   function onSubmit(e) {
     e.preventDefault();
     var text = inputEl.value.trim();
-    if (!text || sending) return;
+    if (!text || sending || Date.now() < blockedUntil) return;
 
     inputEl.value = "";
     addMsg("me", text);
@@ -239,13 +241,55 @@
 
   function done() {
     sending = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
+    // Đang bị khoá vì 429 thì để nguyên; hẹn giờ trong khoaGui() sẽ mở lại.
+    if (Date.now() >= blockedUntil) {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
   }
 
   function loi() {
     typing(false);
     addMsg("bot", "Xin lỗi, không kết nối được. Bạn thử lại sau nhé.");
+  }
+
+  /**
+   * 429 — vượt hạn mức. Server đã soạn sẵn câu tiếng Việt cho người dùng cuối
+   * trong body, cứ hiện nguyên văn.
+   *
+   * Phải xử lý RIÊNG, không để rơi vào catch chung: catch chung sẽ thử lại
+   * bằng /public/chat, mà endpoint đó cũng đang bị chặn — thành ra tốn thêm
+   * một request nữa rồi hiện nhầm "không kết nối được".
+   */
+  function quaHanMuc(res) {
+    return res
+      .json()
+      .catch(function () {
+        return {};
+      })
+      .then(function (body) {
+        typing(false);
+        addMsg(
+          "bot",
+          body.message || "Bạn đang gửi hơi nhanh, thử lại sau ít phút nhé.",
+        );
+        // Khoá ô nhập cho tới khi được phép gửi lại. Cho khách gõ tiếp rồi lại
+        // ăn 429 nữa thì vừa vô ích vừa khó chịu. Chặn trên trần 60 giây để
+        // quota tháng (resetAt còn hàng tuần) không khoá vĩnh viễn.
+        var cho = Math.min(Number(body.retryAfterSec) || 0, 60);
+        if (cho > 0) khoaGui(cho);
+      });
+  }
+
+  function khoaGui(giay) {
+    blockedUntil = Date.now() + giay * 1000;
+    sendBtn.disabled = true;
+    inputEl.disabled = true;
+    setTimeout(function () {
+      blockedUntil = 0;
+      sendBtn.disabled = false;
+      inputEl.disabled = false;
+    }, giay * 1000);
   }
 
   function send(text) {
@@ -259,6 +303,7 @@
       body: payload(text),
     })
       .then(function (r) {
+        if (r.status === 429) return quaHanMuc(r);
         if (!r.ok) throw new Error("HTTP " + r.status);
         // Trình duyệt quá cũ không có ReadableStream → quay về bản không stream
         if (!r.body || !r.body.getReader) return sendPlain(text);
@@ -335,10 +380,16 @@
       body: payload(text),
     })
       .then(function (r) {
+        // Đường dự phòng cũng bị chặn như đường stream — xử lý y hệt.
+        if (r.status === 429)
+          return quaHanMuc(r).then(function () {
+            return null;
+          });
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
       })
       .then(function (data) {
+        if (!data) return; // đã hiện thông báo ở nhánh 429
         typing(false);
         if (data.conversationId) store(STORE_CONV, data.conversationId);
         addMsg("bot", data.answer, data.citations);

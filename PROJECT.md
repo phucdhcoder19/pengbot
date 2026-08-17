@@ -414,6 +414,7 @@ GET    /api/usage                → số tin nhắn AI tháng này
 GET  /public/widget.js           → loader của widget (static, ~2KB)
 GET  /public/widget-core.js      → khung chat, loader nạp khi bấm bong bóng
 POST /public/chat                { publicKey, conversationId?, message } → { answer, citations }
+                                 429 khi vượt rate limit / quota tháng
 GET  /public/config?key=...      → { name, primaryColor, greeting }
 ```
 
@@ -464,13 +465,15 @@ pengbot/
 │       ├── app.module.ts
 │       ├── common/
 │       │   ├── tenant/           TenantContext, TenantGuard, prisma extension
+│       │   ├── rate-limit/       sliding window Redis + quota theo gói
+│       │   ├── redis/            client ioredis dùng chung
 │       │   └── decorators/       @CurrentTenant(), @CurrentUser()
 │       ├── prisma/               PrismaService (driver adapter)
 │       ├── auth/                 register, login, JwtStrategy
 │       ├── documents/            upload, list, delete
 │       ├── ingest/               BullMQ producer + processor, chunker, embedder
 │       ├── rag/                  retriever (hybrid: vector + full-text → RRF) + answerer
-│       ├── chat/                 public chat endpoint
+│       ├── chat/                 public chat endpoint (có rate limit)
 │       ├── widget/               serve loader.js (/public/widget.js) + core.js + config
 │       └── billing/              Stripe (giai đoạn cuối)
 ├── client/                       React dashboard
