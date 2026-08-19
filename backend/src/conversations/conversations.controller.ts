@@ -22,9 +22,16 @@ export class ConversationsController {
     // ai đó gửi ?page=abc — không có nó thì skip: NaN và Prisma ném lỗi lạ.
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    // ?feedback=down → chỉ hội thoại có câu bị chê. Giá trị khác coi như
+    // không lọc, thay vì trả 400: đây là bộ lọc hiển thị, không phải lệnh.
+    @Query('feedback') feedback?: string,
   ) {
     // Chặn ?limit=999999 kéo cả bảng về làm sập server
-    return this.conversations.list(Math.max(page, 1), Math.min(Math.max(limit, 1), 100));
+    return this.conversations.list(
+      Math.max(page, 1),
+      Math.min(Math.max(limit, 1), 100),
+      feedback === 'down',
+    );
   }
 
   @Get(':id')

@@ -83,7 +83,7 @@ describe('Rate limit & quota (e2e)', () => {
 
   afterAll(async () => {
     if (keysToClean.length) await redis.del(...keysToClean);
-    await redis.del(`rl:t:${T.tenantId}`);
+    await redis.del(`rl:chat:t:${T.tenantId}`);
     await prisma.tenant.deleteMany({ where: { id: T.tenantId } });
     await app.close();
     await prisma.$disconnect();
@@ -94,7 +94,7 @@ describe('Rate limit & quota (e2e)', () => {
     const keys = await redis.keys(`rl:*${T.tenantId}*`);
     if (keys.length) await redis.del(...keys);
     // Trần theo IP dùng chung cho cả file → cũng phải dọn.
-    const ipKeys = await redis.keys('rl:ip:*');
+    const ipKeys = await redis.keys('rl:*:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
   };
 
@@ -206,7 +206,7 @@ describe('Rate limit & quota (e2e)', () => {
       .expect(401);
 
     // Guard rate limit đứng sau PublicWidgetGuard nên chưa hề chạy.
-    expect(await redis.exists(`rl:t:${T.tenantId}`)).toBe(0);
+    expect(await redis.exists(`rl:chat:t:${T.tenantId}`)).toBe(0);
   });
 
   // ───────────────── Quota tháng ─────────────────

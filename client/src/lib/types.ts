@@ -45,12 +45,16 @@ export interface Citation {
   title: string;
 }
 
+/// Khách bấm 👍/👎 trên câu trả lời. null = chưa ai đánh giá.
+export type Feedback = "UP" | "DOWN" | null;
+
 export interface Message {
   id: string;
   role: MsgRole;
   content: string;
   citations: Citation[];
   confidence: number | null;
+  feedback: Feedback;
   createdAt: string;
 }
 
@@ -58,6 +62,8 @@ export interface Conversation {
   id: string;
   visitorId: string | null;
   messageCount: number;
+  /// Số câu trả lời bị khách bấm 👎 trong hội thoại này.
+  dislikedCount: number;
   preview: string;
   createdAt: string;
   updatedAt: string;

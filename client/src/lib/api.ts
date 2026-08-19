@@ -213,19 +213,27 @@ export async function deleteDocument(id: string): Promise<void> {
 
 const PAGE_SIZE = 20;
 
-export async function listConversations(page = 1): Promise<Paginated<Conversation>> {
+/** @param onlyDisliked chỉ lấy hội thoại có câu trả lời bị khách bấm 👎. */
+export async function listConversations(
+  page = 1,
+  onlyDisliked = false,
+): Promise<Paginated<Conversation>> {
   if (!USE_MOCK) {
     const { data } = await http.get<Paginated<Conversation>>("/conversations", {
-      params: { page },
+      // undefined thì axios bỏ hẳn tham số khỏi URL — sạch hơn ?feedback=
+      params: { page, feedback: onlyDisliked ? "down" : undefined },
     });
     return data;
   }
   await delay();
   requireSession();
+  const all = onlyDisliked
+    ? mock.conversations.filter((c) => c.dislikedCount > 0)
+    : mock.conversations;
   const start = (page - 1) * PAGE_SIZE;
   return {
-    items: copy(mock.conversations.slice(start, start + PAGE_SIZE)),
-    total: mock.conversations.length,
+    items: copy(all.slice(start, start + PAGE_SIZE)),
+    total: all.length,
   };
 }
 

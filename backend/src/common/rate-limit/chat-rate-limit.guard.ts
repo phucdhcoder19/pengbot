@@ -8,11 +8,10 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TenantContext } from '../tenant/tenant.context';
-import { RateLimitService, type Rule } from './rate-limit.service';
+import { RateLimitService } from './rate-limit.service';
 import { QuotaService } from './quota.service';
 import { limitsOf, monthStart, nextMonth } from './plan-limits';
-
-const MINUTE = 60_000;
+import { clientIp, publicRules, tooManyRequestsBody } from './public-rules';
 
 /// Trần cho MỘT khách (visitorId trong localStorage của trình duyệt họ).
 /// Chủ yếu chống bấm nhầm liên tục và script vụng; visitorId do client tự sinh
@@ -60,48 +59,24 @@ export class ChatRateLimitGuard implements CanActivate {
     const visitorId = (req.body as { visitorId?: string } | undefined)
       ?.visitorId;
 
-    const rules: Rule[] = [];
-    if (visitorId) {
-      // Gắn tenantId vào key: hai tenant tình cờ có visitorId trùng nhau
-      // (localStorage bị chép, hoặc client sinh id kém ngẫu nhiên) thì không
-      // ăn chung hạn mức của nhau.
-      rules.push({
-        key: `rl:v:${tenantId}:${visitorId}`,
-        windowMs: MINUTE,
-        limit: VISITOR_PER_MIN,
-        label: 'visitor',
-      });
-    }
-    if (ip) {
-      rules.push({
-        key: `rl:ip:${ip}`,
-        windowMs: MINUTE,
-        limit: IP_PER_MIN,
-        label: 'ip',
-      });
-    }
-    rules.push({
-      key: `rl:t:${tenantId}`,
-      windowMs: MINUTE,
-      limit: limits.requestsPerMinute,
-      label: 'tenant',
-    });
-
-    const verdict = await this.rateLimit.check(rules);
+    const verdict = await this.rateLimit.check(
+      publicRules({
+        prefix: 'chat',
+        tenantId,
+        visitorId,
+        ip,
+        perVisitor: VISITOR_PER_MIN,
+        perIp: IP_PER_MIN,
+        perTenant: limits.requestsPerMinute,
+      }),
+    );
     if (!verdict.allowed) {
       this.log.warn(
         `429 ${verdict.label} tenant=${tenantId} ip=${ip ?? '-'} visitor=${visitorId ?? '-'}`,
       );
       res.setHeader('Retry-After', String(verdict.retryAfterSec));
       throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          code: 'RATE_LIMITED',
-          // Thông điệp đi thẳng ra widget, hiện trên website khách hàng →
-          // viết cho người dùng cuối đọc, không lộ luật nào đã chặn.
-          message: `Bạn đang gửi hơi nhanh. Vui lòng thử lại sau ${verdict.retryAfterSec} giây.`,
-          retryAfterSec: verdict.retryAfterSec,
-        },
+        tooManyRequestsBody(verdict.retryAfterSec),
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -138,18 +113,4 @@ export class ChatRateLimitGuard implements CanActivate {
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }
-}
-
-/**
- * IP của khách.
- *
- * `req.ip` chỉ đọc X-Forwarded-For khi Express bật `trust proxy` — main.ts
- * chỉ bật khi có biến TRUST_PROXY. Cố ý mặc định TẮT: tin header đó vô điều
- * kiện nghĩa là ai cũng tự khai IP của mình được, và trần theo IP thành vô dụng.
- */
-function clientIp(req: Request): string | undefined {
-  const ip = req.ip ?? req.socket.remoteAddress ?? undefined;
-  // ::ffff:1.2.3.4 (IPv4 bọc trong IPv6) → 1.2.3.4, để cùng một máy không
-  // được tính thành hai IP khác nhau tuỳ cách kết nối.
-  return ip?.replace(/^::ffff:/, '');
 }

@@ -24,9 +24,10 @@ Technically this is **multi-tenant SaaS + RAG**. Many companies share one system
 | Dashboard API | ✅ |
 | React dashboard, wired to the real API | ✅ |
 | Rate limiting + monthly quota | ✅ |
+| Answer feedback (👍/👎) | ✅ |
 | Stripe billing | ❌ |
 
-**Tests:** 28 unit, 35 e2e — 12 of them dedicated to proving tenant data isolation.
+**Tests:** 28 unit, 45 e2e — 14 of them dedicated to proving tenant data isolation.
 
 ---
 
@@ -160,7 +161,7 @@ That page deliberately ships hostile CSS (`button { background: red !important }
 ```bash
 cd backend
 npm test                 # 28 unit tests, no Docker needed
-npm run test:e2e         # 35 e2e tests, needs Postgres + Redis
+npm run test:e2e         # 45 e2e tests, needs Postgres + Redis
 ```
 
 E2E runs **fully offline**: it deletes `EMBEDDING_API_KEY` and `LLM_API_KEY` from `process.env` after the app boots, so no network calls and no quota burned. Tenant isolation lives in the `WHERE` clause, not in vector quality, so fake vectors still test the thing that matters.
@@ -197,7 +198,7 @@ Remember to revert.
 | POST | `/api/documents` | multipart `file`, returns **202** |
 | GET | `/api/documents/:id` | |
 | DELETE | `/api/documents/:id` | |
-| GET | `/api/conversations?page&limit` | |
+| GET | `/api/conversations?page&limit&feedback=down` | `feedback=down` keeps only conversations with a 👎 |
 | GET | `/api/conversations/:id` | includes all messages |
 
 ### Public — `/public/*`, authenticated by `publicKey`
@@ -209,10 +210,29 @@ Remember to revert.
 | GET | `/public/config?key=pk_...` | appearance settings only |
 | POST | `/public/chat` | single JSON response, rate limited |
 | POST | `/public/chat/stream` | **SSE** — what the widget uses, rate limited |
+| POST | `/public/feedback` | 👍/👎 on an answer, rate limited |
 
 ---
 
 ## Design decisions worth calling out
+
+### Answer feedback: 👍 / 👎
+
+Confidence tells you where the bot *thinks* it was unsure. Feedback tells you where a real person says it was wrong — the only signal that isn't the system grading its own homework. Visitors rate any answer straight from the widget; the dashboard filters conversations down to the ones somebody marked unhelpful.
+
+`/public/feedback` is a public **write** endpoint, so it checks three things before touching a row:
+
+```
+1. the message belongs to this tenant   findFirst → Prisma extension adds WHERE tenantId → else 404
+2. the message is the BOT's             rating your own question is meaningless → 400
+3. the rater owns the conversation      conversation.visitorId must match → else 403
+```
+
+Check 3 is not real authentication — `visitorId` is generated client-side — but it is an unguessable UUID, which is enough to stop somebody holding the `publicKey` from downvoting a stranger's conversation. Conversations with no `visitorId` (localStorage blocked) skip it: better to accept the rating than to reject a legitimate visitor.
+
+The widget sends the **final state** it wants (`UP` / `DOWN` / `NONE`) rather than toggling, so the endpoint is idempotent and clicking the lit thumb again simply withdraws the rating. Rate limiting uses a separate key space (`rl:fb:*`) from chat (`rl:chat:*`) — rating three answers must never eat into someone's ability to ask a fourth question.
+
+Because the assistant's `Message` row is only written after the stream finishes, the `done` SSE event now carries `messageId` — which also makes `done` mean "saved", not just "finished talking".
 
 ### Rate limiting and quota on the public endpoint
 

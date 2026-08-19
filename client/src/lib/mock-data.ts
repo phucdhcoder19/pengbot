@@ -368,6 +368,7 @@ for (const raw of RAW) {
       content: turn.q,
       citations: [],
       confidence: null,
+      feedback: null, // chỉ chấm được câu của bot
       createdAt: new Date(at).toISOString(),
     });
     list.push({
@@ -380,6 +381,10 @@ for (const raw of RAW) {
         title,
       })),
       confidence: turn.confidence,
+      // Câu bot tự nhận là không chắc thì cho 👎, còn lại để trống —
+      // dựng sẵn vài mẫu để xem được bộ lọc "câu bị chê" khi chạy mock.
+      feedback:
+        turn.confidence != null && turn.confidence < 0.6 ? "DOWN" : null,
       createdAt: new Date(at + 4_000).toISOString(),
     });
   });
@@ -389,6 +394,7 @@ for (const raw of RAW) {
     id: raw.id,
     visitorId: raw.visitorId,
     messageCount: list.length,
+    dislikedCount: list.filter((m) => m.feedback === "DOWN").length,
     preview: raw.turns[0].q,
     createdAt: new Date(start).toISOString(),
     updatedAt: list[list.length - 1].createdAt,

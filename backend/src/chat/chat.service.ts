@@ -13,12 +13,21 @@ import {
 export type ChatEvent =
   | { type: 'meta'; conversationId: string }
   | { type: 'delta'; text: string }
-  | { type: 'done'; citations: Citation[]; confidence: number }
+  /// messageId để widget gửi kèm khi khách bấm 👍/👎. Chỉ biết được sau
+  /// khi stream xong, vì Message của bot mãi lúc đó mới được ghi.
+  | {
+      type: 'done';
+      messageId: string;
+      citations: Citation[];
+      confidence: number;
+    }
   | { type: 'error'; message: string };
 import type { ChatDto } from './dto/chat.dto';
 
 export type ChatReply = {
   conversationId: string;
+  /// Id của Message bot vừa trả lời — widget cần để gửi feedback.
+  messageId: string;
   answer: string;
   citations: Citation[];
   confidence: number;
@@ -64,7 +73,7 @@ export class ChatService {
     // Gom các thao tác ghi sau khi đã có câu trả lời vào MỘT transaction.
     // Lời gọi LLM nằm ngoài — ôm nó trong transaction là giữ kết nối DB
     // suốt 2 giây chờ mạng, rất tốn với endpoint công khai.
-    await this.persist(conversation.id, result);
+    const messageId = await this.persist(conversation.id, result);
 
     this.log.log(
       `chat conv=${conversation.id} history=${history.length} llm=${result.usedLlm} tokens=${result.tokensUsed}`,
@@ -72,6 +81,7 @@ export class ChatService {
 
     return {
       conversationId: conversation.id,
+      messageId,
       answer: result.answer,
       citations: result.citations,
       confidence: result.confidence,
@@ -107,6 +117,7 @@ export class ChatService {
     let confidence = 0;
     let usedLlm = false;
     let tokensUsed = 0;
+    let failed = false;
 
     try {
       const standalone = await this.answerer.rewriteQuestion(
@@ -130,8 +141,6 @@ export class ChatService {
           tokensUsed = piece.tokensUsed;
         }
       }
-
-      yield { type: 'done', citations, confidence };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.log.error(`Stream hỏng: ${detail}`);
@@ -142,13 +151,18 @@ export class ChatService {
       citations = [];
       confidence = 0;
       usedLlm = false;
+      failed = true;
 
       yield { type: 'error', message: SYSTEM_ERROR };
     }
 
-    // Ghi sổ SAU KHI stream xong. Không thể ghi sớm hơn vì lúc đó chưa có
-    // câu trả lời hoàn chỉnh để lưu vào Message.content.
-    await this.persist(conversation.id, {
+    // Ghi sổ SAU KHI stream xong: sớm hơn thì chưa có câu trả lời hoàn
+    // chỉnh để lưu vào Message.content.
+    //
+    // Và phải ghi TRƯỚC khi phát 'done', vì sự kiện đó mang messageId cho
+    // widget gửi feedback. Đổi lại 'done' giờ đúng nghĩa "đã lưu xong",
+    // chứ không phải "đã nói xong" — chậm hơn đúng một lần ghi DB.
+    const messageId = await this.persist(conversation.id, {
       answer: full,
       citations,
       confidence,
@@ -156,14 +170,25 @@ export class ChatService {
       tokensUsed,
     });
 
+    // Hỏng thì đã phát 'error' trong catch rồi, không phát 'done' nữa.
+    if (!failed) yield { type: 'done', messageId, citations, confidence };
+
     this.log.log(
       `chat(stream) conv=${conversation.id} history=${history.length} llm=${usedLlm} tokens=${tokensUsed}`,
     );
   }
 
-  /** Lưu câu trả lời + usage + updatedAt trong một transaction. Dùng chung cho cả hai đường. */
-  private async persist(conversationId: string, result: RagAnswer) {
-    await this.prisma.$transaction([
+  /**
+   * Lưu câu trả lời + usage + updatedAt trong một transaction. Dùng chung
+   * cho cả hai đường (chat và chatStream).
+   *
+   * Trả về id của Message bot vừa ghi — widget cần nó để gửi feedback.
+   */
+  private async persist(
+    conversationId: string,
+    result: RagAnswer,
+  ): Promise<string> {
+    const ops = [
       this.prisma.message.create({
         data: {
           conversationId,
@@ -185,7 +210,12 @@ export class ChatService {
         where: { id: conversationId },
         data: { updatedAt: new Date() },
       }),
-    ]);
+    ];
+
+    // Message của bot là thao tác ĐẦU TIÊN trong mảng → phần tử đầu của
+    // kết quả. Đổi thứ tự mảng mà quên chỗ này là trả nhầm id.
+    const [message] = await this.prisma.$transaction(ops);
+    return message.id;
   }
 
   /**

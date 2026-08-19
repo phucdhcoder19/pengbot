@@ -6,7 +6,14 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
-import { AlertIcon, ChatIcon, ChevronLeftIcon, DocumentIcon } from "../components/ui/icons";
+import {
+  AlertIcon,
+  ChatIcon,
+  ChevronLeftIcon,
+  DocumentIcon,
+  ThumbDownIcon,
+  ThumbUpIcon,
+} from "../components/ui/icons";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../lib/api";
 import { cn } from "../lib/cn";
@@ -20,7 +27,14 @@ export function ConversationsPage() {
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("c");
 
-  const loadList = useCallback(() => api.listConversations(1), []);
+  // Bộ lọc nằm trong URL chứ không phải useState: người vận hành gửi được
+  // link "?feedback=down" cho đồng nghiệp, và F5 không mất bộ lọc.
+  const onlyDisliked = params.get("feedback") === "down";
+
+  const loadList = useCallback(
+    () => api.listConversations(1, onlyDisliked),
+    [onlyDisliked],
+  );
   const list = useAsync(loadList);
 
   const loadDetail = useCallback(
@@ -30,17 +44,29 @@ export function ConversationsPage() {
   );
   const detail = useAsync(loadDetail);
 
+  /// Mọi thao tác điều hướng đều phải mang bộ lọc theo, nếu không chọn một
+  /// hội thoại là danh sách lặng lẽ nhảy về "tất cả".
+  const withFilter = useCallback(
+    (extra: Record<string, string> = {}) =>
+      onlyDisliked ? { feedback: "down", ...extra } : extra,
+    [onlyDisliked],
+  );
+
   // Trên màn hình rộng thì mở sẵn hội thoại mới nhất; màn hình hẹp để người
   // dùng tự chọn, tránh nhảy thẳng vào một hội thoại họ chưa nhìn thấy.
   const items = list.data?.items;
   useEffect(() => {
     if (selectedId || !items?.length) return;
     if (!window.matchMedia("(min-width: 1024px)").matches) return;
-    setParams({ c: items[0].id }, { replace: true });
-  }, [items, selectedId, setParams]);
+    // withFilter chứ không phải { c } trần: effect này chạy ngay khi vào
+    // trang, nên quên bộ lọc ở đây là URL ?feedback=down tự xoá chính nó.
+    setParams(withFilter({ c: items[0].id }), { replace: true });
+  }, [items, selectedId, setParams, withFilter]);
 
-  const select = (id: string) => setParams({ c: id });
-  const clear = () => setParams({});
+  const select = (id: string) => setParams(withFilter({ c: id }));
+  const clear = () => setParams(withFilter());
+  const toggleFilter = () =>
+    setParams(onlyDisliked ? {} : { feedback: "down" });
 
   const lowConfidenceCount =
     detail.data?.messages.filter(
@@ -54,6 +80,18 @@ export function ConversationsPage() {
         title="What customers asked"
         description="Read back real conversations. Wherever the bot sounded unsure is exactly where your documents need more detail."
       />
+
+      {/* Bộ lọc: đường tắt tới thứ đáng xem nhất — nơi khách TỰ nói bot sai,
+          không phải nơi ta suy đoán qua confidence. */}
+      <div className="mb-6 flex items-center gap-2">
+        <FilterChip active={!onlyDisliked} onClick={toggleFilter}>
+          All conversations
+        </FilterChip>
+        <FilterChip active={onlyDisliked} onClick={toggleFilter}>
+          <ThumbDownIcon className="size-3.5" />
+          Marked unhelpful
+        </FilterChip>
+      </div>
 
       {list.error && !list.data ? (
         <Alert
@@ -76,11 +114,19 @@ export function ConversationsPage() {
         </Card>
       ) : items && items.length === 0 ? (
         <Card>
-          <EmptyState
-            icon={<ChatIcon className="size-5" />}
-            title="No conversations yet"
-            description="When customers start chatting on your website, every question and answer will be saved here for you to review."
-          />
+          {onlyDisliked ? (
+            <EmptyState
+              icon={<ThumbUpIcon className="size-5" />}
+              title="Nobody has marked an answer unhelpful"
+              description="Visitors can rate every answer in the widget. Nothing has been thumbed down yet — either the bot is doing well, or no one has rated anything."
+            />
+          ) : (
+            <EmptyState
+              icon={<ChatIcon className="size-5" />}
+              title="No conversations yet"
+              description="When customers start chatting on your website, every question and answer will be saved here for you to review."
+            />
+          )}
         </Card>
       ) : items ? (
         <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -169,6 +215,32 @@ export function ConversationsPage() {
   );
 }
 
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors duration-150",
+        active
+          ? "border-accent-line bg-accent-soft text-accent-text"
+          : "border-line text-soft hover:bg-hover hover:text-text",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function ConversationRow({
   conversation,
   selected,
@@ -208,6 +280,12 @@ function ConversationRow({
           <span className="tabular-nums">{relativeTime(conversation.updatedAt)}</span>
           <span aria-hidden="true">·</span>
           <span className="tabular-nums">{conversation.messageCount} msgs</span>
+          {conversation.dislikedCount > 0 ? (
+            <span className="ml-auto inline-flex items-center gap-1 text-danger">
+              <ThumbDownIcon className="size-3.5" />
+              <span className="tabular-nums">{conversation.dislikedCount}</span>
+            </span>
+          ) : null}
         </div>
       </button>
     </li>
@@ -260,6 +338,29 @@ function MessageBubble({ message }: { message: Message }) {
           </div>
         ) : null}
       </div>
+
+      {/* Đánh giá của khách. Đặt TRƯỚC ghi chú confidence vì nó là sự thật
+          đã đo được, còn confidence chỉ là suy đoán của hệ thống. */}
+      {message.feedback ? (
+        <p
+          className={cn(
+            "mt-1.5 inline-flex items-center gap-1.5 text-[12px]",
+            message.feedback === "DOWN" ? "text-danger" : "text-soft",
+          )}
+        >
+          {message.feedback === "DOWN" ? (
+            <>
+              <ThumbDownIcon className="size-3.5 shrink-0" />
+              The visitor marked this answer unhelpful
+            </>
+          ) : (
+            <>
+              <ThumbUpIcon className="size-3.5 shrink-0" />
+              The visitor found this answer helpful
+            </>
+          )}
+        </p>
+      ) : null}
 
       {/* Ghi chú lề: đây là insight quan trọng nhất của trang này. */}
       {uncertain ? (

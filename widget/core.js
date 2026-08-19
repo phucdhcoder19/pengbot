@@ -92,6 +92,18 @@
       "  font-size: 11px; background: #fff; border: 1px solid #e4e4e7;",
       "  border-radius: 999px; padding: 3px 9px; color: #52525b;",
       "}",
+      ".rate { display: flex; gap: 2px; margin-top: 4px; margin-left: 2px; }",
+      ".rate button {",
+      "  background: none; border: 0; cursor: pointer; padding: 4px 5px;",
+      "  border-radius: 6px; line-height: 0; color: #a1a1aa;",
+      "  transition: color .15s ease, background-color .15s ease;",
+      "}",
+      ".rate button:hover { color: #52525b; background: #f4f4f5; }",
+      ".rate button:focus-visible { outline: 2px solid var(--c); outline-offset: 1px; }",
+      ".rate button[aria-pressed=true] { color: var(--c); }",
+      ".rate button[disabled] { cursor: default; opacity: .5; }",
+      ".rate svg { width: 15px; height: 15px; }",
+      ".rate .thanks { font-size: 11.5px; color: #a1a1aa; align-self: center; padding-left: 4px; }",
       ".dots { display: flex; gap: 4px; padding: 12px 13px; }",
       ".dots i { width: 6px; height: 6px; border-radius: 50%; background: #a1a1aa; animation: b 1.2s infinite; }",
       ".dots i:nth-child(2) { animation-delay: .2s } .dots i:nth-child(3) { animation-delay: .4s }",
@@ -208,6 +220,98 @@
       box.appendChild(chip);
     });
     el.appendChild(box);
+  }
+
+  // ───────────────────────── đánh giá 👍/👎 ─────────────────────────
+
+  var THUMB_UP =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M7 22V11l4-9a2.5 2.5 0 0 1 2.5 3l-.8 4H19a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17.6 22z"/><path d="M7 11H3v11h4"/></svg>';
+
+  /// Cùng một hình xoay 180°: hai icon luôn khớp nhau về nét và khối lượng.
+  var THUMB_DOWN = THUMB_UP.replace(
+    '<svg ',
+    '<svg style="transform:rotate(180deg)" ',
+  );
+
+  /**
+   * Gắn hàng 👍/👎 dưới một câu trả lời.
+   *
+   * Chỉ gọi khi ĐÃ có messageId — tức là sau sự kiện 'done'. Trước đó câu
+   * trả lời còn chưa được ghi vào DB nên chưa có gì để chấm.
+   */
+  function addRating(el, messageId) {
+    var box = document.createElement("div");
+    box.className = "rate";
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", "Đánh giá câu trả lời");
+
+    var current = null; // null | "UP" | "DOWN"
+
+    var up = button("UP", "Câu trả lời hữu ích", THUMB_UP);
+    var down = button("DOWN", "Câu trả lời chưa đúng", THUMB_DOWN);
+    box.appendChild(up);
+    box.appendChild(down);
+    el.appendChild(box);
+
+    function button(vote, label, svg) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("aria-label", label);
+      b.setAttribute("aria-pressed", "false");
+      b.innerHTML = svg;
+      b.addEventListener("click", function () {
+        // Bấm lại đúng nút đang chọn = rút lại đánh giá.
+        submit(current === vote ? "NONE" : vote);
+      });
+      return b;
+    }
+
+    function paint() {
+      up.setAttribute("aria-pressed", current === "UP" ? "true" : "false");
+      down.setAttribute("aria-pressed", current === "DOWN" ? "true" : "false");
+    }
+
+    /// Đặt tên khác send() ở ngoài (hàm gửi câu hỏi): trùng tên trong hai
+    /// tầng closure là kiểu nhầm lẫn rất khó thấy khi đọc lại.
+    function submit(vote) {
+      var previous = current;
+      // Vẽ trước, gửi sau: mạng chậm mà nút không phản hồi thì khách bấm
+      // lại lần nữa, thành ra tự huỷ đánh giá của mình.
+      current = vote === "NONE" ? null : vote;
+      paint();
+
+      fetch(API + "/public/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicKey: publicKey,
+          messageId: messageId,
+          vote: vote,
+          visitorId: visitorId(),
+        }),
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          if (current === "DOWN") thanks("Cảm ơn, chúng tôi sẽ cải thiện.");
+          else if (current === "UP") thanks("Cảm ơn bạn!");
+        })
+        .catch(function () {
+          // Hỏng thì trả nút về trạng thái cũ. Để nó sáng như đã ghi nhận
+          // trong khi server không hề biết là nói dối với khách.
+          current = previous;
+          paint();
+        });
+    }
+
+    function thanks(text) {
+      var old = box.querySelector(".thanks");
+      if (old) old.remove();
+      var span = document.createElement("span");
+      span.className = "thanks";
+      span.textContent = text;
+      box.appendChild(span);
+    }
   }
 
   function typing(on) {
@@ -346,6 +450,7 @@
       } else if (ev.type === "done") {
         if (el && ev.citations && ev.citations.length)
           addCites(el, ev.citations);
+        if (el && ev.messageId) addRating(el, ev.messageId);
       } else if (ev.type === "error") {
         typing(false);
         if (!el) addMsg("bot", ev.message);
@@ -393,7 +498,8 @@
         if (!data) return; // đã hiện thông báo ở nhánh 429
         typing(false);
         if (data.conversationId) store(STORE_CONV, data.conversationId);
-        addMsg("bot", data.answer, data.citations);
+        var el = addMsg("bot", data.answer, data.citations);
+        if (data.messageId) addRating(el, data.messageId);
       });
   }
 

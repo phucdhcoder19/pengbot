@@ -19,6 +19,7 @@ import { ChatModule } from './chat/chat.module';
 import { TenantModule } from './tenant/tenant.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { WidgetModule } from './widget/widget.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { RedisModule } from './common/redis/redis.module';
 
 @Module({
@@ -37,6 +38,7 @@ import { RedisModule } from './common/redis/redis.module';
     IngestModule,
     RagModule,
     ChatModule,
+    FeedbackModule,
     TenantModule,
     ConversationsModule,
     WidgetModule,

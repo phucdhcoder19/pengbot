@@ -143,3 +143,16 @@ export const SparkIcon = (p: IconProps) => (
     <path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9 12 3.5Z" />
   </Icon>
 );
+
+export const ThumbUpIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M7 21V10l4-7a2.2 2.2 0 0 1 2.2 2.7L12.5 9H18a1.8 1.8 0 0 1 1.8 2.2l-1.3 6.4A2 2 0 0 1 16.5 21Z" />
+    <path d="M7 10H4v11h3" />
+  </Icon>
+);
+
+/// Cùng hình với ThumbUpIcon, xoay 180° — hai icon luôn khớp nhau về nét
+/// và khối lượng, không bao giờ lệch khi ai đó chỉnh một cái.
+export const ThumbDownIcon = (p: IconProps) => (
+  <ThumbUpIcon {...p} style={{ transform: "rotate(180deg)", ...p.style }} />
+);
