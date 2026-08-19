@@ -41,3 +41,9 @@ export function limitsOf(plan: Plan | undefined): PlanLimits {
 export function monthStart(now: Date = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
+
+/// Mốc reset quota: đầu tháng kế tiếp. Tháng 12 tự sang năm sau vì Date.UTC
+/// nhận tháng 12 (0-based) và tự cộng năm.
+export function nextMonth(from: Date): Date {
+  return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+}

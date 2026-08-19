@@ -23,10 +23,10 @@ Technically this is **multi-tenant SaaS + RAG**. Many companies share one system
 | Embeddable widget (Shadow DOM, ~5.5 KB gzipped) | ✅ |
 | Dashboard API | ✅ |
 | React dashboard, wired to the real API | ✅ |
-| Rate limiting | ❌ **required before going public** |
+| Rate limiting + monthly quota | ✅ |
 | Stripe billing | ❌ |
 
-**Tests:** 15 unit, 21 e2e — 10 of them dedicated to proving tenant data isolation.
+**Tests:** 28 unit, 35 e2e — 12 of them dedicated to proving tenant data isolation.
 
 ---
 
@@ -159,22 +159,24 @@ That page deliberately ships hostile CSS (`button { background: red !important }
 
 ```bash
 cd backend
-npm test                 # 15 unit tests, no Docker needed
-npm run test:e2e         # 21 e2e tests, needs Postgres + Redis
+npm test                 # 28 unit tests, no Docker needed
+npm run test:e2e         # 35 e2e tests, needs Postgres + Redis
 ```
 
 E2E runs **fully offline**: it deletes `EMBEDDING_API_KEY` and `LLM_API_KEY` from `process.env` after the app boots, so no network calls and no quota burned. Tenant isolation lives in the `WHERE` clause, not in vector quality, so fake vectors still test the thing that matters.
 
 ### Proving the tests have teeth
 
-Temporarily delete `WHERE c."tenantId" = ${tenantId}` from `rag/retriever.service.ts` and rerun:
+`rag/retriever.service.ts` has **two** raw-SQL branches since hybrid search landed — vector and full-text — and each spells out its own `WHERE "tenantId"`. Temporarily delete either one and rerun the e2e suite; these tests in `rag-isolation.e2e-spec.ts` go red:
 
 ```
-● retrieval for A returns only A's chunks
-● ⭐ B's content NEVER leaks into A's results
-● retrieval for B returns only B's chunks
-Tests: 3 failed, 18 passed
+● ⭐ nội dung của B KHÔNG BAO GIỜ lọt vào kết quả của A     (vector branch)
+● A truy hồi → chỉ ra chunk của A                          (vector branch)
+● B truy hồi → chỉ ra chunk của B                          (vector branch)
+● ⭐ A hỏi đúng tên riêng của B → nhánh từ khoá vẫn KHÔNG trả chunk của B
 ```
+
+The last one exists specifically because the keyword branch is a *second* place the filter can be forgotten: the e2e fixtures use deterministic fake vectors, so B's content can only reach A through full-text.
 
 Remember to revert.
 
@@ -190,7 +192,7 @@ Remember to revert.
 | POST | `/api/auth/login` | |
 | GET | `/api/me` | user + tenant (including `publicKey`) |
 | PATCH | `/api/tenant` | `name`, `allowedDomains`, `widgetTitle/Color/Greeting` |
-| GET | `/api/usage?days=30` | aggregated stats |
+| GET | `/api/usage?days=30` | aggregated stats + monthly quota vs plan |
 | GET | `/api/documents` | |
 | POST | `/api/documents` | multipart `file`, returns **202** |
 | GET | `/api/documents/:id` | |
@@ -232,6 +234,8 @@ Note that the quota counts only answers that actually called the LLM; a question
 Limits per plan live in [`plan-limits.ts`](backend/src/common/rate-limit/plan-limits.ts); the per-visitor and per-IP numbers are `RATE_LIMIT_VISITOR_PER_MIN` / `RATE_LIMIT_IP_PER_MIN`. Behind nginx, set `TRUST_PROXY=1` or the IP gate lumps the whole internet into one bucket — but never set it to `true`, or callers can forge `X-Forwarded-For` and the gate becomes decorative.
 
 Both gates answer `429` with a Vietnamese message written for the end user, plus `Retry-After` and a `code` (`RATE_LIMITED` / `QUOTA_EXCEEDED`). The widget prints the message and locks its input until the window passes, instead of retrying against the non-streaming endpoint and showing a misleading network error.
+
+The dashboard reads the monthly figure from the **same** `QuotaService.usedThisMonth()` the guard blocks on, so `/api/usage` can never disagree with what visitors are experiencing. Overview shows it as a meter tile (amber at 80%, red when exhausted) and raises a banner above the fold once the ceiling is close — a chatbot that has silently stopped answering is not something to bury among the stat tiles.
 
 ### Hybrid search: vector + full-text, fused with RRF
 

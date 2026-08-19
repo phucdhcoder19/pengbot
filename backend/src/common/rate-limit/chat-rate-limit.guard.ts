@@ -3,15 +3,14 @@ import {
   ExecutionContext,
   HttpException,
   HttpStatus,
-  Inject,
   Injectable,
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { PRISMA, type ExtendedPrismaClient } from '../../prisma/prisma';
 import { TenantContext } from '../tenant/tenant.context';
 import { RateLimitService, type Rule } from './rate-limit.service';
-import { limitsOf, monthStart } from './plan-limits';
+import { QuotaService } from './quota.service';
+import { limitsOf, monthStart, nextMonth } from './plan-limits';
 
 const MINUTE = 60_000;
 
@@ -42,7 +41,7 @@ export class ChatRateLimitGuard implements CanActivate {
 
   constructor(
     private readonly rateLimit: RateLimitService,
-    @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
+    private readonly quota: QuotaService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -112,43 +111,32 @@ export class ChatRateLimitGuard implements CanActivate {
   }
 
   /**
-   * Quota tháng, đếm thẳng từ Postgres.
+   * Quota tháng. Con số "đã dùng" lấy từ QuotaService — CÙNG một hàm mà
+   * dashboard gọi, nên hai nơi không thể lệch nhau.
    *
    * Không cache trong Redis: nguồn sự thật phải là bảng UsageEvent (thứ dùng
-   * để tính tiền), và một counter Redis lệch pha với DB là loại lỗi rất khó
-   * tìm. Câu đếm này chạy trên index @@index([tenantId, createdAt]) nên với
-   * vài nghìn dòng mỗi tháng là dưới một mili giây — rẻ hơn nhiều so với
-   * phần còn lại của request (embed + LLM).
-   *
-   * Khi một tenant lên tới hàng trăm nghìn event/tháng thì đổi sang bảng tổng
-   * hợp `UsageMonthly(tenantId, month, count)` cộng dồn lúc ghi.
+   * để tính tiền), và một counter Redis lệch pha với DB là loại lỗi rất khó tìm.
    */
   private async assertQuota(tenantId: string, monthlyLimit: number) {
+    const used = await this.quota.usedThisMonth(tenantId);
+    if (used < monthlyLimit) return;
+
     const from = monthStart();
-
-    // count đi qua Prisma extension → tự có WHERE tenantId. Vẫn truyền tường
-    // minh để ai đọc câu này không phải tin vào một extension ở file khác.
-    const used = await this.prisma.usageEvent.count({
-      where: { tenantId, type: 'AI_MESSAGE', createdAt: { gte: from } },
-    });
-
-    if (used >= monthlyLimit) {
-      this.log.warn(
-        `429 quota tenant=${tenantId} used=${used}/${monthlyLimit} từ ${from.toISOString()}`,
-      );
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          code: 'QUOTA_EXCEEDED',
-          message:
-            'Trợ lý đã dùng hết lượt trả lời trong tháng này. Vui lòng liên hệ trực tiếp với chúng tôi.',
-          used,
-          limit: monthlyLimit,
-          resetAt: nextMonth(from).toISOString(),
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    this.log.warn(
+      `429 quota tenant=${tenantId} used=${used}/${monthlyLimit} từ ${from.toISOString()}`,
+    );
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        code: 'QUOTA_EXCEEDED',
+        message:
+          'Trợ lý đã dùng hết lượt trả lời trong tháng này. Vui lòng liên hệ trực tiếp với chúng tôi.',
+        used,
+        limit: monthlyLimit,
+        resetAt: nextMonth(from).toISOString(),
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 }
 
@@ -164,8 +152,4 @@ function clientIp(req: Request): string | undefined {
   // ::ffff:1.2.3.4 (IPv4 bọc trong IPv6) → 1.2.3.4, để cùng một máy không
   // được tính thành hai IP khác nhau tuỳ cách kết nối.
   return ip?.replace(/^::ffff:/, '');
-}
-
-function nextMonth(from: Date): Date {
-  return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
 }

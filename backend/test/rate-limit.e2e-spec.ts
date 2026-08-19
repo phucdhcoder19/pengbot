@@ -29,7 +29,7 @@ describe('Rate limit & quota (e2e)', () => {
   let rateLimit: RateLimitService;
 
   const stamp = Date.now();
-  const T = { tenantId: '', publicKey: '' };
+  const T = { tenantId: '', publicKey: '', token: '' };
   const keysToClean: string[] = []; // key Redis cần dọn
 
   const rule = (name: string, limit: number, windowMs = 1000): Rule => {
@@ -77,6 +77,7 @@ describe('Rate limit & quota (e2e)', () => {
       .expect(201);
 
     T.tenantId = res.body.tenant.id;
+    T.token = res.body.accessToken;
     T.publicKey = res.body.tenant.publicKey;
   });
 
@@ -228,6 +229,47 @@ describe('Rate limit & quota (e2e)', () => {
     expect(res.body.used).toBeGreaterThanOrEqual(n);
     expect(res.body.limit).toBe(n);
     expect(new Date(res.body.resetAt).getUTCDate()).toBe(1);
+  }, 60_000);
+
+  it('⭐ dashboard báo ĐÚNG con số guard dùng để chặn', async () => {
+    // Bất biến quan trọng nhất của QuotaService: nếu widget bị chặn ở 100/100
+    // mà dashboard hiện 87/100 thì khách không thể nào hiểu chuyện gì xảy ra.
+    // Bài trước vừa làm tenant T chạm trần → giờ hỏi dashboard xem có khớp.
+    const blocked = await chat(`v-check-${stamp}`).expect(429);
+
+    const res = await request(http)
+      .get('/api/usage')
+      .set('Authorization', `Bearer ${T.token}`)
+      .expect(200);
+
+    const quota = res.body.quota;
+    expect(quota.used).toBe(blocked.body.used);
+    expect(quota.limit).toBe(blocked.body.limit);
+    expect(quota.resetAt).toBe(blocked.body.resetAt);
+    expect(quota.remaining).toBe(0); // đã hết, không được âm
+    expect(quota.plan).toBe('FREE');
+  }, 60_000);
+
+  it('quota.used KHÁC totalMessages — tháng dương lịch, không phải 30 ngày trượt', async () => {
+    // Sự kiện của tháng trước vẫn nằm trong "30 ngày qua" nhưng KHÔNG thuộc
+    // quota tháng này. Trộn hai con số là lỗi rất dễ mắc khi đọc dashboard.
+    const lastMonth = new Date();
+    lastMonth.setUTCDate(1);
+    lastMonth.setUTCDate(0); // ngày cuối tháng trước
+    await prisma.usageEvent.create({
+      data: {
+        tenantId: T.tenantId,
+        type: 'AI_MESSAGE',
+        createdAt: lastMonth,
+      } as never,
+    });
+
+    const res = await request(http)
+      .get('/api/usage')
+      .set('Authorization', `Bearer ${T.token}`)
+      .expect(200);
+
+    expect(res.body.totalMessages).toBeGreaterThan(res.body.quota.used);
   }, 60_000);
 
   it('usage của tenant KHÁC không tính vào quota của mình', async () => {

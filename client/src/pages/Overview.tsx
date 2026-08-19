@@ -12,8 +12,52 @@ import { ChatIcon, ChevronLeftIcon } from "../components/ui/icons";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { formatNumber, relativeTime } from "../lib/format";
-import type { Conversation, Usage } from "../lib/types";
+import { formatDate, formatNumber, relativeTime } from "../lib/format";
+import type { Conversation, Quota, Usage } from "../lib/types";
+
+/// Từ 80% mới cảnh báo — nhắc sớm quá thì người ta quen mắt rồi bỏ qua đúng
+/// lúc cần chú ý. Trùng ngưỡng đổi màu của StatTile.
+const WARN_AT = 0.8;
+
+/** Banner hạn mức. Trả về null khi còn thoải mái — im lặng là trạng thái tốt. */
+function QuotaNotice({ quota }: { quota: Quota }) {
+  const ratio = quota.limit > 0 ? quota.used / quota.limit : 1;
+  if (ratio < WARN_AT) return null;
+
+  const exhausted = quota.remaining === 0;
+
+  return (
+    <Alert
+      className="mb-12"
+      tone={exhausted ? "danger" : "warn"}
+      action={
+        <Link
+          to="/app/settings"
+          className="rounded-sm text-[13px] underline underline-offset-4"
+        >
+          View plan
+        </Link>
+      }
+    >
+      {exhausted ? (
+        <>
+          <strong className="font-medium">
+            The chatbot has stopped answering.
+          </strong>{" "}
+          You have used all {formatNumber(quota.limit)} AI messages on the{" "}
+          {quota.plan} plan. Visitors now see a message asking them to contact
+          you directly. The quota resets on {formatDate(quota.resetAt)}.
+        </>
+      ) : (
+        <>
+          {formatNumber(quota.remaining)} of {formatNumber(quota.limit)} AI
+          messages left this month. When they run out the chatbot stops
+          answering until {formatDate(quota.resetAt)}.
+        </>
+      )}
+    </Alert>
+  );
+}
 
 interface OverviewData {
   usage: Usage;
@@ -46,6 +90,10 @@ export function OverviewPage() {
         title="Your chatbot"
         description="The last 30 days at a glance: what customers asked and what the bot has learned."
       />
+
+      {/* Đứng TRƯỚC mọi thứ khác: chatbot ngừng trả lời là việc khẩn, không
+          thể để lẫn vào giữa các ô số liệu. */}
+      {data ? <QuotaNotice quota={data.usage.quota} /> : null}
 
       {/* Việc đầu tiên của một công ty mới: đưa chatbot lên website. */}
       <Card tone="accent" className="mb-12">
@@ -91,10 +139,22 @@ export function OverviewPage() {
           </>
         ) : data ? (
           <>
+            {/* Ô hạn mức đứng đầu: đây là con số duy nhất có thể làm chatbot
+                ngừng trả lời, nên nó phải là thứ đập vào mắt trước tiên. */}
             <StatTile
-              label="AI messages"
-              value={data.usage.totalMessages}
-              note="Last 30 days"
+              label="AI messages this month"
+              value={data.usage.quota.used}
+              meter={{
+                used: data.usage.quota.used,
+                limit: data.usage.quota.limit,
+              }}
+              note={
+                <>
+                  of {formatNumber(data.usage.quota.limit)} on the{" "}
+                  {data.usage.quota.plan} plan · resets{" "}
+                  {formatDate(data.usage.quota.resetAt)}
+                </>
+              }
             />
             <StatTile
               label="Documents"

@@ -2,6 +2,7 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PRISMA, type ExtendedPrismaClient } from '../prisma/prisma';
 import { TenantContext } from '../common/tenant/tenant.context';
 import type { UpdateTenantDto } from './dto/update-tenant.dto';
+import { QuotaService } from '../common/rate-limit/quota.service';
 
 /// Các trường của Tenant được phép lộ ra dashboard.
 /// Viết tường minh để sau này thêm cột nhạy cảm vào schema không bị rò ra ngoài.
@@ -19,7 +20,10 @@ const TENANT_FIELDS = {
 
 @Injectable()
 export class TenantService {
-  constructor(@Inject(PRISMA) private readonly prisma: ExtendedPrismaClient) {}
+  constructor(
+    @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
+    private readonly quota: QuotaService,
+  ) {}
 
   async me() {
     const store = TenantContext.get();
@@ -56,6 +60,14 @@ export class TenantService {
     const tenantId = TenantContext.requireTenantId();
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
+    // Gói nằm ở Tenant, mà TenantContext của request dashboard chỉ có tenantId
+    // và userId (plan chỉ được nạp cho request widget) → phải tra thêm.
+    // ⚠️ Tenant KHÔNG nằm trong TENANT_MODELS → extension không lọc, tự truyền id.
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { plan: true },
+    });
+
     // Ba số tổng đi qua Prisma thường → extension tự lọc tenant
     const [totalMessages, totalDocuments, totalChunks] = await Promise.all([
       this.prisma.usageEvent.count({ where: { type: 'AI_MESSAGE' } }),
@@ -82,6 +94,16 @@ export class TenantService {
       ORDER BY 1
     `;
 
-    return { totalMessages, totalDocuments, totalChunks, daily };
+    return {
+      totalMessages,
+      totalDocuments,
+      totalChunks,
+      daily,
+      // ⚠️ KHÁC totalMessages: quota tính theo THÁNG DƯƠNG LỊCH (UTC) và so
+      // với trần của gói, còn totalMessages là tổng trong `days` ngày trượt.
+      // Đây chính là con số ChatRateLimitGuard dùng để chặn — cùng một hàm,
+      // nên dashboard không thể hiện khác thứ widget đang thấy.
+      quota: await this.quota.status(tenantId, tenant.plan),
+    };
   }
 }

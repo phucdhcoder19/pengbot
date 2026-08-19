@@ -65,11 +65,27 @@ export interface Conversation {
 
 export type ConversationDetail = Conversation & { messages: Message[] };
 
+/**
+ * Hạn mức tháng của gói hiện tại.
+ *
+ * ⚠️ `used` KHÁC `Usage.totalMessages`: cái này đếm theo tháng dương lịch
+ * (UTC) và là đúng con số backend dùng để chặn widget, còn totalMessages là
+ * tổng trong `days` ngày trượt.
+ */
+export interface Quota {
+  plan: "FREE" | "PRO" | "ENTERPRISE";
+  used: number;
+  limit: number;
+  remaining: number;
+  resetAt: string;
+}
+
 export interface Usage {
   totalMessages: number;
   totalDocuments: number;
   totalChunks: number;
   daily: { date: string; aiMessages: number }[];
+  quota: Quota;
 }
 
 export interface AuthResult {

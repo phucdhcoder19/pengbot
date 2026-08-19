@@ -263,11 +263,28 @@ export async function getUsage(days = 30): Promise<Usage> {
   await delay();
   requireSession();
   const daily = mock.buildDaily(days);
+  const now = new Date();
+  // Chỉ lấy phần thuộc tháng dương lịch này, giống cách backend đếm.
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const usedThisMonth = daily
+    .filter((d) => d.date.startsWith(monthKey))
+    .reduce((sum, d) => sum + d.aiMessages, 0);
+  const limit = 100; // gói FREE trong plan-limits.ts
+
   return {
     totalMessages: daily.reduce((sum, d) => sum + d.aiMessages, 0),
     totalDocuments: mock.documents.length,
     totalChunks: mock.documents.reduce((sum, d) => sum + d.chunkCount, 0),
     daily,
+    quota: {
+      plan: "FREE",
+      used: usedThisMonth,
+      limit,
+      remaining: Math.max(0, limit - usedThisMonth),
+      resetAt: new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+      ).toISOString(),
+    },
   };
 }
 
