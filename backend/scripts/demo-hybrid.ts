@@ -9,7 +9,8 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { RetrieverService, keywordQueryText } from '../src/rag/retriever.service';
+import { RetrieverService } from '../src/rag/retriever.service';
+import { keywordQueryText } from '../src/rag/keyword-query';
 import { TenantContext } from '../src/common/tenant/tenant.context';
 
 async function main() {

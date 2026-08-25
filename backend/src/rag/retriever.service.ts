@@ -3,6 +3,7 @@ import { TenantContext } from '../common/tenant/tenant.context';
 import { EmbeddingService } from '../ingest/embedding.service';
 import { type ExtendedPrismaClient, PRISMA } from '../prisma/prisma';
 import { fuse } from './rrf';
+import { keywordQueryText } from './keyword-query';
 
 export type RetrievedChunk = {
   id: string;
@@ -24,45 +25,6 @@ export type RetrievedChunk = {
 
 /// Dòng thô trả về từ hai câu SELECT (chưa có score/ranks).
 type Row = Omit<RetrievedChunk, 'score' | 'vectorRank' | 'keywordRank'>;
-
-/**
- * Stop-word tiếng Việt: từ xuất hiện khắp nơi, không mang thông tin để tìm.
- *
- * VÌ SAO CẦN: ts_rank của Postgres KHÔNG có IDF — nó không biết "của" phổ biến
- * hơn "acm-2024-3391". Không lọc thì chunk nào lặp "của tôi" nhiều sẽ được xếp
- * cao dù chẳng liên quan. Postgres cũng không có từ điển tiếng Việt để tự bỏ.
- *
- * Danh sách cố ý ngắn: chỉ hư từ thật sự. "phí", "đơn", "hàng" là từ nội dung,
- * KHÔNG được bỏ dù phổ biến trong FAQ thương mại.
- */
-const STOP_WORDS = new Set(
-  `và với của cho từ trong ngoài trên dưới về đến tới tại theo bằng như
-   là có không chưa được bị phải nên cần đang sẽ đã vẫn cũng đều rất quá
-   thì mà nhưng hay hoặc nếu vì do bởi
-   tôi tao mình bạn anh chị em ông bà họ chúng ta các những mọi mỗi
-   này đó kia ấy đây đấy nào đâu gì sao thế vậy bao nhiêu mấy
-   ạ à ơi nhé nhỉ ư hả hở ha`
-    .split(/\s+/)
-    .filter(Boolean),
-);
-
-/**
- * Chuẩn bị câu hỏi cho nhánh từ khoá: bỏ stop-word và token 1 ký tự.
- * Trả về chuỗi rỗng nếu chẳng còn gì đáng tìm → nhánh từ khoá sẽ trả [].
- *
- * Chỉ LỌC ở đây, KHÔNG tách từ theo kiểu riêng: việc tách (tokenize) để
- * Postgres làm bằng cùng parser 'simple' đã dùng cho cột tsv. Tự tách trong
- * TypeScript sẽ lệch — vd Postgres bẻ "ACM-2024-3391" thành 'acm','-2024',
- * '-3391'; nếu ta gửi '2024' thì không khớp '-2024'.
- */
-export function keywordQueryText(question: string): string {
-  return question
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')) // bỏ dấu câu hai đầu
-    .filter((w) => w.length > 1 && !STOP_WORDS.has(w))
-    .join(' ');
-}
 
 @Injectable()
 export class RetrieverService {
@@ -148,7 +110,7 @@ export class RetrieverService {
    * Nhánh 2 — từ khoá: k chunk chứa nhiều từ trong câu hỏi nhất.
    *
    * Xây tsquery NGAY TRONG SQL từ chính câu hỏi:
-   *   to_tsvector('simple', câu hỏi)  → tách thành lexeme y hệt cách cột tsv
+   *   to_tsvector('vietnamese', câu hỏi) → lexeme ĐÃ BỎ DẤU, y hệt cột tsv
    *   unnest + string_agg(' | ')       → 'đơn' | 'acm' | '-2024' | ...   (OR)
    *   to_tsquery(...)                  → tsquery
    *
@@ -168,8 +130,8 @@ export class RetrieverService {
   ): Promise<Row[]> {
     return this.prisma.$queryRaw<Row[]>`
       WITH q AS (
-        SELECT to_tsquery('simple', string_agg(quote_literal(lexeme), ' | ')) AS query
-        FROM unnest(to_tsvector('simple', ${keywords}))
+        SELECT to_tsquery('vietnamese', string_agg(quote_literal(lexeme), ' | ')) AS query
+        FROM unnest(to_tsvector('vietnamese', ${keywords}))
       )
       SELECT c.id,
              c.content,

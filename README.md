@@ -25,9 +25,10 @@ Technically this is **multi-tenant SaaS + RAG**. Many companies share one system
 | React dashboard, wired to the real API | ✅ |
 | Rate limiting + monthly quota | ✅ |
 | Answer feedback (👍/👎) | ✅ |
+| Accent-insensitive Vietnamese search | ✅ |
 | Stripe billing | ❌ |
 
-**Tests:** 28 unit, 45 e2e — 14 of them dedicated to proving tenant data isolation.
+**Tests:** 38 unit, 51 e2e — 14 of them dedicated to proving tenant data isolation.
 
 ---
 
@@ -160,8 +161,8 @@ That page deliberately ships hostile CSS (`button { background: red !important }
 
 ```bash
 cd backend
-npm test                 # 28 unit tests, no Docker needed
-npm run test:e2e         # 45 e2e tests, needs Postgres + Redis
+npm test                 # 38 unit tests, no Docker needed
+npm run test:e2e         # 51 e2e tests, needs Postgres + Redis
 ```
 
 E2E runs **fully offline**: it deletes `EMBEDDING_API_KEY` and `LLM_API_KEY` from `process.env` after the app boots, so no network calls and no quota burned. Tenant isolation lives in the `WHERE` clause, not in vector quality, so fake vectors still test the thing that matters.
@@ -215,6 +216,26 @@ Remember to revert.
 ---
 
 ## Design decisions worth calling out
+
+#### Vietnamese without diacritics
+
+Vietnamese speakers routinely type without tone marks — "hoan tien" for "hoàn tiền". Against `to_tsvector('simple', …)` that matches nothing, so the keyword branch was silently dead for a large share of real questions.
+
+Fixed with a text search configuration that inserts `unaccent` ahead of `simple`, used by **both** the stored `tsv` column and the query, so all four combinations of accented/bare content and query meet in the middle:
+
+```sql
+CREATE TEXT SEARCH CONFIGURATION vietnamese (COPY = simple);
+ALTER TEXT SEARCH CONFIGURATION vietnamese
+  ALTER MAPPING FOR asciiword, word, hword, … WITH unaccent, simple;
+```
+
+The `unaccent` shipped with Postgres 16 already handles `đ → d` and stacked diacritics (ầ ặ ỡ), so no custom `unaccent.rules` file is needed — verified, not assumed.
+
+**The interesting part is the stop-word list.** Stripping accents makes Vietnamese wildly homographic, and many function words collide with the exact terms a shop cares about: *mấy→may* hits **máy** (machine), *bạn→ban* hits **bán** (sell), *chị→chi* hits **chi phí** (cost), *mà→ma* hits **mã** (order code). Folding the whole stop-word list to bare form would quietly delete the most valuable keywords in the corpus.
+
+So there are two lists. The full accented one is matched against the raw token — when someone types "cho" *with* the accent as "chó", we know it is a dog and keep it. A second, deliberately short list of bare forms catches only function words that cannot plausibly be product nouns. Words that carry no diacritic at all (bao, sao, do…) are irreducibly ambiguous; those stay in the list only when the function-word reading dominates.
+
+Accent folding costs precision in the keyword branch. That is acceptable here because the vector branch still discriminates by meaning, and RRF ranks down anything only one branch liked.
 
 ### Answer feedback: 👍 / 👎
 

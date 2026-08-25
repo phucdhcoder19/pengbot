@@ -473,6 +473,7 @@ pengbot/
 │       ├── documents/            upload, list, delete
 │       ├── ingest/               BullMQ producer + processor, chunker, embedder
 │       ├── rag/                  retriever (hybrid: vector + full-text → RRF) + answerer
+│       │                        keyword-query.ts: bỏ dấu + stop-word tiếng Việt
 │       ├── chat/                 public chat endpoint (có rate limit)
 │       ├── feedback/             POST /public/feedback — 👍/👎 của khách
 │       ├── widget/               serve loader.js (/public/widget.js) + core.js + config
