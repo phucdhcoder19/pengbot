@@ -7,6 +7,7 @@ import {
   type Citation,
   type RagAnswer,
 } from '../rag/answerer.service';
+import { smallTalkReply } from '../rag/small-talk';
 
 /// Sự kiện gửi cho client qua SSE.
 /// 'meta' đi ĐẦU TIÊN để widget lưu conversationId ngay, kể cả khi phần sau hỏng.
@@ -68,7 +69,9 @@ export class ChatService {
     });
 
     const history = await this.loadHistory(conversation.id);
-    const result = await this.answerWithFallback(dto.message, history);
+    const result =
+      this.smallTalk(dto.message) ??
+      (await this.answerWithFallback(dto.message, history));
 
     // Gom các thao tác ghi sau khi đã có câu trả lời vào MỘT transaction.
     // Lời gọi LLM nằm ngoài — ôm nó trong transaction là giữ kết nối DB
@@ -120,25 +123,33 @@ export class ChatService {
     let failed = false;
 
     try {
-      const standalone = await this.answerer.rewriteQuestion(
-        dto.message,
-        history,
-      );
-      const chunks = await this.retriever.retrieve(standalone);
+      // Xã giao → phát nguyên câu đáp thành một mẩu rồi thôi. Cùng chốt chặn
+      // với chat(), chỉ khác cách đưa chữ ra.
+      const smallTalk = this.smallTalk(dto.message);
+      if (smallTalk) {
+        full = smallTalk.answer;
+        yield { type: 'delta', text: smallTalk.answer };
+      } else {
+        const standalone = await this.answerer.rewriteQuestion(
+          dto.message,
+          history,
+        );
+        const chunks = await this.retriever.retrieve(standalone);
 
-      for await (const piece of this.answerer.answerStream(
-        dto.message,
-        chunks,
-        history,
-      )) {
-        if (piece.type === 'delta') {
-          full += piece.text;
-          yield { type: 'delta', text: piece.text };
-        } else {
-          citations = piece.citations;
-          confidence = piece.confidence;
-          usedLlm = piece.usedLlm;
-          tokensUsed = piece.tokensUsed;
+        for await (const piece of this.answerer.answerStream(
+          dto.message,
+          chunks,
+          history,
+        )) {
+          if (piece.type === 'delta') {
+            full += piece.text;
+            yield { type: 'delta', text: piece.text };
+          } else {
+            citations = piece.citations;
+            confidence = piece.confidence;
+            usedLlm = piece.usedLlm;
+            tokensUsed = piece.tokensUsed;
+          }
         }
       }
     } catch (err) {
@@ -216,6 +227,30 @@ export class ChatService {
     // kết quả. Đổi thứ tự mảng mà quên chỗ này là trả nhầm id.
     const [message] = await this.prisma.$transaction(ops);
     return message.id;
+  }
+
+  /**
+   * Chốt chặn xã giao — đặt TRƯỚC cả bước embed.
+   *
+   * "xin chào" đi trọn vòng RAG thì tốn một lần embed, một lần gọi LLM (~1900
+   * token đo trên dữ liệu thật) và một UsageEvent tính vào quota tháng, để rồi
+   * nhận về đúng câu "tôi không có thông tin". Chặn ở đây là trả lời tức thì,
+   * không chạm mạng, không tính tiền ai cả.
+   *
+   * Dùng CHUNG cho chat() và chatStream() — hai đường phải cư xử giống hệt
+   * nhau, chép đôi logic ra là sớm muộn cũng lệch.
+   */
+  private smallTalk(message: string): RagAnswer | null {
+    const reply = smallTalkReply(message);
+    if (!reply) return null;
+
+    return {
+      answer: reply,
+      citations: [], // không tra tài liệu thì không có gì để dẫn nguồn
+      confidence: 0, // thang confidence đo độ gần với tài liệu, ở đây vô nghĩa
+      usedLlm: false, // ⭐ không sinh UsageEvent → không trừ quota của tenant
+      tokensUsed: 0,
+    };
   }
 
   /**

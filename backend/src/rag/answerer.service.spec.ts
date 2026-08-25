@@ -24,7 +24,7 @@ describe('AnswererService — chốt chặn tin cậy', () => {
     const r = await service.answer('cau hoi', []);
 
     expect(r.usedLlm).toBe(false);
-    expect(r.answer).toContain('không có thông tin');
+    expect(r.answer).toContain('chưa có thông tin');
     expect(r.citations).toEqual([]);
     expect(r.tokensUsed).toBe(0);
     expect(r.confidence).toBe(0);
