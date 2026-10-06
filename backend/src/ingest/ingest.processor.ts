@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { type ExtendedPrismaClient, PRISMA } from '../prisma/prisma';
@@ -7,6 +7,7 @@ import { TenantContext } from '../common/tenant/tenant.context';
 import { extractText } from './extract-text';
 import { chunkText, estimateTokens } from './chunker';
 import { unlink } from 'node:fs/promises';
+import { throttledRedisErrorLogger } from '../common/redis/redis-resilience';
 
 export const INGEST_QUEUE = 'ingest';
 /// Payload của job. tenantId BẮT BUỘC có mặt ở đây — worker chạy ngoài request
@@ -28,6 +29,15 @@ export class IngestProcessor extends WorkerHost {
     super();
   }
   private readonly log = new Logger(IngestProcessor.name);
+  private readonly logRedisError = throttledRedisErrorLogger(
+    `${IngestProcessor.name}:worker`,
+  );
+
+  /// Redis chết thì worker cứ thế reconnect, đừng in stack trace mỗi lần.
+  @OnWorkerEvent('error')
+  onWorkerError(err: Error) {
+    this.logRedisError(err);
+  }
 
   async process(job: Job<IngestJob>) {
     const { documentId, tenantId, filePath } = job.data;

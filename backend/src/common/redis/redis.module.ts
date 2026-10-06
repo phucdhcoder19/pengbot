@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import {
+  redisRetryStrategy,
+  throttledRedisErrorLogger,
+} from './redis-resilience';
 
 export const REDIS = Symbol('REDIS');
 
@@ -23,12 +27,18 @@ export const REDIS = Symbol('REDIS');
     {
       provide: REDIS,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        new Redis(config.getOrThrow<string>('REDIS_URL'), {
+      useFactory: (config: ConfigService) => {
+        const redis = new Redis(config.getOrThrow<string>('REDIS_URL'), {
           maxRetriesPerRequest: 1,
           enableOfflineQueue: false, // mất kết nối → ném lỗi ngay, không xếp hàng
           connectTimeout: 2000,
-        }),
+          retryStrategy: redisRetryStrategy,
+        });
+        // Không có listener này thì mỗi lần reconnect hỏng ioredis lại in
+        // "Unhandled error event". Rate limit đã tự fail-open khi lệnh lỗi.
+        redis.on('error', throttledRedisErrorLogger('RedisClient'));
+        return redis;
+      },
     },
   ],
   exports: [REDIS],

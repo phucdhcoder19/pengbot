@@ -21,6 +21,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { WidgetModule } from './widget/widget.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { RedisModule } from './common/redis/redis.module';
+import { redisRetryStrategy } from './common/redis/redis-resilience';
 
 @Module({
   imports: [
@@ -28,7 +29,10 @@ import { RedisModule } from './common/redis/redis.module';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: { url: config.getOrThrow<string>('REDIS_URL') },
+        connection: {
+          url: config.getOrThrow<string>('REDIS_URL'),
+          retryStrategy: redisRetryStrategy, // Redis chết → thử lại thưa dần
+        },
       }),
     }), // phải đứng ĐẦU — nạp .env trước
     AuthModule,

@@ -1,4 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { type ExtendedPrismaClient, PRISMA } from '../prisma/prisma';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -7,13 +14,29 @@ import { Queue } from 'bullmq';
 import { extname } from 'node:path';
 import { SOURCE_TYPE_BY_EXT } from '../ingest/extract-text';
 import { SourceType } from 'generated/prisma/enums';
+import { unlink } from 'node:fs/promises';
+import {
+  throttledRedisErrorLogger,
+  withTimeout,
+} from '../common/redis/redis-resilience';
+
+/// Redis chết thì queue.add treo vô hạn (BullMQ không bao giờ bỏ cuộc) —
+/// cắt ở đây để request upload trả lỗi thay vì treo.
+const ENQUEUE_TIMEOUT_MS = 5000;
 
 @Injectable()
-export class DocumentsService {
+export class DocumentsService implements OnModuleInit {
+  private readonly log = new Logger(DocumentsService.name);
+
   constructor(
     @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
     @InjectQueue(INGEST_QUEUE) private readonly queue: Queue<IngestJob>,
   ) {}
+
+  onModuleInit() {
+    // Không nghe 'error' thì BullMQ console.error nguyên stack mỗi lần reconnect.
+    this.queue.on('error', throttledRedisErrorLogger(`${INGEST_QUEUE}:queue`));
+  }
 
   async createFromUpload(file: Express.Multer.File) {
     const ext = extname(file.originalname).toLowerCase();
@@ -27,13 +50,32 @@ export class DocumentsService {
       } as any,
     });
 
-    await this.queue.add('ingest-document', {
-      documentId: doc.id,
-      // ⭐ Worker chạy ngoài request → không có TenantContext.
-      // tenantId PHẢI đi theo payload, không có cách nào lấy lại được.
-      tenantId: doc.tenantId,
-      filePath: file.path,
-    });
+    try {
+      await withTimeout(
+        this.queue.add('ingest-document', {
+          documentId: doc.id,
+          // ⭐ Worker chạy ngoài request → không có TenantContext.
+          // tenantId PHẢI đi theo payload, không có cách nào lấy lại được.
+          tenantId: doc.tenantId,
+          filePath: file.path,
+        }),
+        ENQUEUE_TIMEOUT_MS,
+        'Thêm job ingest',
+      );
+    } catch (err) {
+      // Hàng đợi hỏng → dọn sạch để khách upload lại, đừng để lại tài liệu
+      // PENDING mãi mãi không ai xử lý.
+      this.log.error(
+        `Không đưa được tài liệu ${doc.id} vào hàng đợi: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.prisma.document
+        .delete({ where: { id: doc.id } })
+        .catch(() => {});
+      await unlink(file.path).catch(() => {});
+      throw new ServiceUnavailableException(
+        'Document processing is unavailable right now, please try again later',
+      );
+    }
 
     return doc; // client poll status để biết khi nào xong
   }
@@ -48,7 +90,7 @@ export class DocumentsService {
 
     // Không tìm thấy = "không tồn tại", KHÔNG phải "cấm truy cập".
     // Trả 403 là tự tiết lộ id đó có thật ở tenant khác.
-    if (!doc) throw new NotFoundException('Không tìm thấy tài liệu');
+    if (!doc) throw new NotFoundException('Document not found');
     return doc;
   }
   async remove(id: string) {
