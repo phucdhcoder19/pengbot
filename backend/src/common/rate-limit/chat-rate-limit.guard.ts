@@ -105,7 +105,7 @@ export class ChatRateLimitGuard implements CanActivate {
         statusCode: HttpStatus.TOO_MANY_REQUESTS,
         code: 'QUOTA_EXCEEDED',
         message:
-          'Trợ lý đã dùng hết lượt trả lời trong tháng này. Vui lòng liên hệ trực tiếp với chúng tôi.',
+          'This assistant has reached its monthly message limit. Please contact us directly.',
         used,
         limit: monthlyLimit,
         resetAt: nextMonth(from).toISOString(),

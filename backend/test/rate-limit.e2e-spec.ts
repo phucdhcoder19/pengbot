@@ -180,7 +180,7 @@ describe('Rate limit & quota (e2e)', () => {
 
     expect(blocked).toBeDefined();
     expect(blocked!.body.code).toBe('RATE_LIMITED');
-    expect(blocked!.body.message).toContain('thử lại sau');
+    expect(blocked!.body.message).toContain('try again in');
     expect(blocked!.body.retryAfterSec).toBeGreaterThanOrEqual(1);
     expect(blocked!.headers['retry-after']).toBeDefined();
   }, 60_000);

@@ -55,7 +55,7 @@ export class WidgetController {
     try {
       return await readFile(file, 'utf8');
     } catch {
-      throw new NotFoundException(`Không đọc được widget tại ${file}`);
+      throw new NotFoundException(`Could not read widget file at ${file}`);
     }
   }
 

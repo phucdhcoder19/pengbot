@@ -15,11 +15,7 @@
 import { stripAccents } from './keyword-query';
 
 export type SmallTalkKind =
-  | 'greeting'
-  | 'thanks'
-  | 'goodbye'
-  | 'identity'
-  | 'capability';
+  'greeting' | 'thanks' | 'goodbye' | 'identity' | 'capability';
 
 /**
  * Câu trả lời sẵn cho từng nhóm.
@@ -32,14 +28,13 @@ export type SmallTalkKind =
  */
 const REPLIES: Record<SmallTalkKind, string> = {
   greeting:
-    'Xin chào! Mình là trợ lý ảo, có thể giải đáp thắc mắc dựa trên tài liệu của chúng tôi. Bạn cần hỗ trợ gì ạ?',
-  thanks: 'Không có gì ạ! Bạn cần hỗ trợ thêm điều gì cứ hỏi mình nhé.',
-  goodbye:
-    'Tạm biệt bạn, hẹn gặp lại! Khi cần hỗ trợ bạn cứ quay lại đây nhé.',
+    "Hi there! I'm a virtual assistant and can answer questions based on our documents. How can I help you?",
+  thanks: "You're welcome! If there's anything else you need, just ask.",
+  goodbye: 'Goodbye, see you soon! Come back here any time you need help.',
   identity:
-    'Mình là trợ lý ảo, trả lời dựa trên tài liệu chính thức của chúng tôi. Bạn muốn tìm hiểu về điều gì ạ?',
+    "I'm a virtual assistant that answers based on our official documents. What would you like to know?",
   capability:
-    'Mình có thể trả lời các câu hỏi dựa trên tài liệu của chúng tôi. Bạn cứ đặt câu hỏi cụ thể, mình sẽ tra giúp bạn nhé.',
+    "I can answer questions based on our documents. Ask me something specific and I'll look it up for you.",
 };
 
 /**

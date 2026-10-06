@@ -46,10 +46,10 @@ export class AuthService {
     // ⚠️ Cùng một thông báo cho cả "không có email" lẫn "sai mật khẩu".
     // Tách ra là kẻ tấn công dò được email nào đã đăng ký.
     if (!user)
-      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+      throw new UnauthorizedException('Incorrect email or password');
 
     const ok = await argon2.verify(user.passwordHash, dto.password);
-    if (!ok) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    if (!ok) throw new UnauthorizedException('Incorrect email or password');
 
     return this.issueToken(user, user.tenant);
   }

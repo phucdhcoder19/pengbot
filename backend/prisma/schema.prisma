@@ -33,7 +33,7 @@ model Tenant {
   // Giao diện widget — công ty tự đổi trong dashboard, không phải sửa lại snippet
   widgetTitle    String @default("Chat with us")
   widgetColor    String @default("#0D9488")
-  widgetGreeting String @default("Xin chào! Tôi có thể giúp gì cho bạn?")
+  widgetGreeting String @default("Hi! How can I help you today?")
 
   users         User[]
   documents     Document[]

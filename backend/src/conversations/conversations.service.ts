@@ -97,7 +97,7 @@ export class ConversationsService {
       },
     });
 
-    if (!conversation) throw new NotFoundException('Không tìm thấy hội thoại');
+    if (!conversation) throw new NotFoundException('Conversation not found');
     return conversation;
   }
 }

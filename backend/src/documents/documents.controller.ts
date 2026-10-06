@@ -57,7 +57,7 @@ export class DocumentsController {
   )
   upload(@UploadedFile() file: Express.Multer.File) {
     // fileFilter từ chối thì file = undefined, không phải ném lỗi
-    if (!file) throw new BadRequestException('Thiếu file');
+    if (!file) throw new BadRequestException('File is required');
     return this.documents.createFromUpload(file);
   }
 

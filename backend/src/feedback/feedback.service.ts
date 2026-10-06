@@ -40,10 +40,10 @@ export class FeedbackService {
       },
     });
 
-    if (!message) throw new NotFoundException('Không tìm thấy câu trả lời');
+    if (!message) throw new NotFoundException('Answer not found');
 
     if (message.role !== 'ASSISTANT') {
-      throw new BadRequestException('Chỉ đánh giá được câu trả lời của bot');
+      throw new BadRequestException('Only bot answers can be rated');
     }
 
     // Chủ hội thoại. visitorId do client tự sinh nên KHÔNG phải xác thực thật,
@@ -54,7 +54,7 @@ export class FeedbackService {
     // này: thà nhận feedback còn hơn từ chối một người dùng hợp lệ.
     const owner = message.conversation.visitorId;
     if (owner && owner !== dto.visitorId) {
-      throw new ForbiddenException('Không phải hội thoại của bạn');
+      throw new ForbiddenException('Not your conversation');
     }
 
     const feedback = dto.vote === 'NONE' ? null : dto.vote;

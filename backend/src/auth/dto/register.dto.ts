@@ -6,11 +6,11 @@ export class RegisterDto {
   @MaxLength(100)
   companyName!: string;
 
-  @IsEmail({}, { message: 'Email không hợp lệ' })
+  @IsEmail({}, { message: 'Invalid email address' })
   email!: string;
 
   @IsString()
-  @MinLength(8, { message: 'Mật khẩu tối thiểu 8 ký tự' })
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
   @MaxLength(128) // chặn payload khổng lồ — băm mật khẩu rất tốn CPU
   password!: string;
 }

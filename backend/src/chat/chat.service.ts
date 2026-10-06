@@ -43,7 +43,7 @@ const HISTORY_LIMIT = 6;
 const MAX_MESSAGES_PER_CONVERSATION = 200;
 
 const SYSTEM_ERROR =
-  'Xin lỗi, hệ thống đang gặp sự cố. Bạn vui lòng thử lại sau ít phút.';
+  'Sorry, something went wrong on our side. Please try again in a few minutes.';
 
 @Injectable()
 export class ChatService {

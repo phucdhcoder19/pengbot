@@ -56,7 +56,7 @@ export class ChatController {
     } catch (err) {
       // chatStream đã tự bắt lỗi bên trong; đây là lưới cuối cho lỗi ngoài dự kiến
       res.write(
-        `data: ${JSON.stringify({ type: 'error', message: 'Có lỗi xảy ra' })}\n\n`,
+        `data: ${JSON.stringify({ type: 'error', message: 'Something went wrong' })}\n\n`,
       );
     } finally {
       res.end(); // thiếu dòng này thì trình duyệt treo chờ mãi

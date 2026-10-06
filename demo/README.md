@@ -1,30 +1,33 @@
-# Demo — website của một khách hàng dùng Pengbot
+# Demo site — Cloudpine Coffee Roasters
 
-`index.html` giả lập website của **Pengu Coffee**, một xưởng cà phê có gắn chatbot
-Pengbot. Thanh tối trên cùng chỉ để điều khiển demo; website thật của khách
-chỉ cần đúng một thẻ `<script>`.
+`index.html` is a mock website for a coffee shop. It is written in English and
+deliberately **never mentions Pengbot**: the audience sees an ordinary website,
+then watches the shop owner paste in one snippet to get a chatbot.
 
-## Chạy
+Where to paste: the **Admin** link in the footer opens a **Custom code** box,
+mimicking the script-injection settings of Wix / WordPress / Shopify. The page
+only accepts the widget's script tag (it reads `src` + `data-key`) and never
+executes arbitrary code.
+
+## Run
 
 ```bash
-npx serve demo              # → http://localhost:3000 (hoặc cổng serve báo)
+npx serve demo
 ```
 
-Hoặc deploy thư mục `demo/` thành một site tĩnh (Vercel: tạo project mới,
-Root Directory = `demo`, không cần build).
+Deploy: Vercel → new project, Root Directory = `demo`, Framework = Other.
 
-Mặc định trang gọi backend đã deploy `https://pengbot-api.onrender.com`. Chạy
-backend local thì mở `?api=http://localhost:3000` một lần, trang sẽ nhớ.
+## Demo script
 
-## Kịch bản demo
+1. Dashboard → sign up.
+2. **Documents** → upload [`cloudpine-faq.md`](cloudpine-faq.md), wait for **READY**.
+3. **Settings** → set the widget title and greeting → copy the `<script>` snippet.
+4. Coffee site → **Admin** (footer) → paste → **Save & publish**.
+5. Open the chat bubble and ask questions.
+6. Back to the dashboard → **Conversations** / **Overview**.
 
-1. Dashboard → đăng ký tài khoản (mỗi tài khoản = một công ty).
-2. **Documents** → upload [`tai-lieu-mau.md`](tai-lieu-mau.md), chờ **READY**.
-3. **Settings** → copy publicKey → dán vào thanh trên cùng → **Nhúng widget**.
-4. Bấm bong bóng chat, thử các câu hỏi gợi ý trong mục **Hướng dẫn**.
-5. Quay lại dashboard → **Conversations** / **Overview**.
+Share a link with the widget pre-installed: `https://<demo-site>/?key=pk_...`
+(add `&api=http://localhost:3000` when running the backend locally).
 
-Gửi link có sẵn key cho người khác xem: `https://<site-demo>/?key=pk_...`
-
-> Nếu Settings đã khai báo `allowedDomains`, phải thêm domain của trang demo
-> vào đó, không thì widget bị chặn 403 (thanh trạng thái sẽ báo).
+> If Settings has `allowedDomains` configured, add the demo site's domain there,
+> otherwise the Admin box reports "This domain is not on the allowed list".

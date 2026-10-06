@@ -75,7 +75,7 @@ export function tooManyRequestsBody(retryAfterSec: number) {
     code: 'RATE_LIMITED' as const,
     // Thông điệp đi thẳng ra widget, hiện trên website khách hàng →
     // viết cho người dùng cuối đọc, không lộ luật nào đã chặn.
-    message: `Bạn đang gửi hơi nhanh. Vui lòng thử lại sau ${retryAfterSec} giây.`,
+    message: `You're sending messages a bit too fast. Please try again in ${retryAfterSec} seconds.`,
     retryAfterSec,
   };
 }

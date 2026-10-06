@@ -21,7 +21,7 @@ export class PublicWidgetGuard implements CanActivate {
 
     // Middleware không tra được publicKey → không xác định được công ty nào
     if (!store?.tenantId) {
-      throw new UnauthorizedException('publicKey không hợp lệ');
+      throw new UnauthorizedException('Invalid publicKey');
     }
 
     const origin = ctx.switchToHttp().getRequest<Request>().headers.origin;
@@ -40,7 +40,7 @@ export class PublicWidgetGuard implements CanActivate {
     const host = hostOf(origin);
     const ok = allowed.some((d) => host === d || host.endsWith(`.${d}`));
     if (!ok) {
-      throw new ForbiddenException(`Domain ${origin} chưa được cho phép`);
+      throw new ForbiddenException(`Domain ${origin} is not allowed`);
     }
 
     return true;

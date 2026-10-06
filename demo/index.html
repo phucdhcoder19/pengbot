@@ -1,15 +1,17 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pengu Coffee — Demo Pengbot</title>
+    <title>Cloudpine Coffee Roasters</title>
     <!--
-      Website giả lập của MỘT khách hàng dùng Pengbot (xưởng cà phê Pengu Coffee).
-      Thanh tối trên cùng là phần điều khiển demo — website thật của khách chỉ
-      cần đúng một thẻ <script> mà dashboard sinh ra.
+      Mock website of a customer (a coffee shop). It deliberately never mentions
+      the chatbot product, so the audience sees a normal website whose owner
+      simply pastes in one snippet.
 
-      Cách dùng: xem demo/README.md.
+      Where to paste: the "Admin" link in the footer opens a "Custom code" box,
+      mimicking the script-injection settings of Wix / WordPress / Shopify.
+      See demo/README.md.
     -->
     <style>
       :root {
@@ -21,8 +23,6 @@
         --ink: #2b2522;
         --muted: #7a6d65;
         --line: #e8ddd2;
-        --ok: #15803d;
-        --err: #b91c1c;
       }
       * { box-sizing: border-box; }
       body {
@@ -35,99 +35,19 @@
       a { color: var(--roast); }
       .container { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
 
-      /* ───────── Thanh điều khiển demo ───────── */
-      .demo-bar {
-        background: #18181b;
-        color: #e4e4e7;
-        font-size: 14px;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-      }
-      .demo-bar .container {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px 12px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-      }
-      .demo-tag {
-        background: #0d9488;
-        color: #fff;
-        font-weight: 600;
-        font-size: 12px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        letter-spacing: 0.02em;
-      }
-      .demo-bar form { display: flex; flex: 1; min-width: 260px; gap: 8px; }
-      .demo-bar input {
-        flex: 1;
-        min-width: 0;
-        background: #27272a;
-        border: 1px solid #3f3f46;
-        color: #fafafa;
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
-      }
-      .demo-bar button {
-        background: #0d9488;
-        color: #fff;
-        border: 0;
-        border-radius: 6px;
-        padding: 6px 14px;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .demo-bar button.ghost { background: transparent; border: 1px solid #3f3f46; color: #e4e4e7; }
-      .status { display: inline-flex; align-items: center; gap: 6px; }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: #71717a; flex: none; }
-      .dot.ok { background: #22c55e; }
-      .dot.err { background: #ef4444; }
-      .dot.wait { background: #eab308; animation: blink 1s infinite; }
-      @keyframes blink { 50% { opacity: 0.3; } }
+      .announce { background: var(--bean); color: #f0e4d8; text-align: center; font-size: 13px; padding: 8px 16px; }
 
-      .guide {
-        display: none;
-        background: #f4f4f5;
-        border-bottom: 1px solid #e4e4e7;
-        font-size: 14px;
-      }
-      .guide.open { display: block; }
-      .guide .container { padding-top: 16px; padding-bottom: 20px; }
-      .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-      .guide h3 { margin: 0 0 8px; font-size: 15px; }
-      .guide ol { margin: 0; padding-left: 20px; }
-      .guide li { margin-bottom: 4px; }
-      .guide code { background: #e4e4e7; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
-      .questions { display: flex; flex-direction: column; gap: 6px; }
-      .q {
-        text-align: left;
-        background: #fff;
-        border: 1px solid #e4e4e7;
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: inherit;
-        cursor: pointer;
-        color: inherit;
-      }
-      .q:hover { border-color: #0d9488; }
-      .q small { display: block; color: #71717a; font-size: 12px; }
-
-      /* ───────── Website cửa hàng ───────── */
       header.site { border-bottom: 1px solid var(--line); background: var(--paper); }
       header.site .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
       .logo { font-weight: 800; font-size: 20px; color: var(--bean); text-decoration: none; letter-spacing: -0.01em; }
-      .logo span { color: var(--crema); }
+      .logo span { color: var(--crema); font-weight: 600; }
       nav a { margin-left: 20px; text-decoration: none; color: var(--muted); font-size: 15px; }
       nav a:hover { color: var(--bean); }
 
-      .hero { background: var(--milk); padding: 72px 0; }
-      .hero h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; color: var(--bean); letter-spacing: -0.02em; max-width: 14ch; }
-      .hero p { font-size: 18px; color: var(--muted); max-width: 52ch; margin: 0 0 28px; }
+      .hero { background: var(--milk); padding: 80px 0; }
+      .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 12px; color: var(--roast); font-weight: 700; margin: 0 0 12px; }
+      .hero h1 { font-size: clamp(34px, 5.5vw, 56px); line-height: 1.08; margin: 0 0 16px; color: var(--bean); letter-spacing: -0.02em; max-width: 13ch; }
+      .hero p { font-size: 18px; color: var(--muted); max-width: 50ch; margin: 0 0 28px; }
       .cta { display: inline-block; background: var(--bean); color: #fff; padding: 12px 22px; border-radius: 999px; text-decoration: none; font-weight: 600; }
 
       section.block { padding: 64px 0; }
@@ -147,215 +67,249 @@
       .fact strong { display: block; color: var(--bean); margin-bottom: 4px; }
       .fact span { color: var(--muted); font-size: 14px; }
 
+      .visit { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+      .visit dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; }
+      .visit dt { color: var(--muted); }
+      .visit dd { margin: 0; }
+      .map { height: 220px; border-radius: 14px; background: repeating-linear-gradient(45deg, #efe6dc 0 12px, #f7f1ea 12px 24px); display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+
       footer { background: var(--bean); color: #d6c7bb; padding: 32px 0; font-size: 14px; }
       footer .container { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+      footer button { background: none; border: 0; color: #8f7f73; font: inherit; cursor: pointer; padding: 0; text-decoration: underline; }
+
+      /* ───────── Admin: Custom code (mimics a website builder's settings) ───────── */
+      .admin-backdrop { position: fixed; inset: 0; background: rgba(24, 24, 27, 0.5); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+      .admin-backdrop.open { display: flex; }
+      .admin {
+        background: #fff; color: #18181b; width: 100%; max-width: 560px; border-radius: 12px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); font-size: 14px; overflow: hidden;
+      }
+      .admin header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #e4e4e7; }
+      .admin header strong { font-size: 15px; }
+      .admin .x { background: none; border: 0; font-size: 20px; line-height: 1; cursor: pointer; color: #71717a; }
+      .admin .content { padding: 18px; }
+      .admin label { display: block; font-weight: 600; margin-bottom: 4px; }
+      .admin .hint { color: #71717a; margin: 0 0 10px; }
+      .admin textarea {
+        width: 100%; min-height: 110px; resize: vertical; border: 1px solid #d4d4d8; border-radius: 8px;
+        padding: 10px; font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      .admin textarea:focus { outline: 2px solid #2563eb; outline-offset: -1px; border-color: transparent; }
+      .admin .actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+      .admin .actions div { display: flex; gap: 8px; }
+      .admin button.primary { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+      .admin button.secondary { background: #fff; color: #3f3f46; border: 1px solid #d4d4d8; border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer; }
+      .admin .msg { min-height: 20px; color: #71717a; }
+      .admin .msg.ok { color: #15803d; }
+      .admin .msg.err { color: #b91c1c; }
 
       @media (max-width: 720px) {
-        .guide-grid { grid-template-columns: 1fr; }
         nav { display: none; }
-        .hero { padding: 48px 0; }
+        .hero { padding: 56px 0; }
         section.block { padding: 48px 0; }
+        .visit { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
-    <!-- ═════════ PHẦN ĐIỀU KHIỂN DEMO (không có trên website thật) ═════════ -->
-    <div class="demo-bar">
-      <div class="container">
-        <span class="demo-tag">DEMO PENGBOT</span>
-        <form id="key-form">
-          <input id="key" placeholder="Dán publicKey (pk_...) từ trang Settings" autocomplete="off" spellcheck="false" />
-          <button type="submit">Nhúng widget</button>
-        </form>
-        <span class="status"><span class="dot" id="dot"></span><span id="status">Chưa có publicKey</span></span>
-        <button class="ghost" id="toggle-guide" type="button">Hướng dẫn ▾</button>
-      </div>
-    </div>
+    <div class="announce">Free shipping on orders over $40 · Roasted every Monday &amp; Thursday</div>
 
-    <div class="guide" id="guide">
-      <div class="container guide-grid">
-        <div>
-          <h3>Cách demo trong 3 phút</h3>
-          <ol>
-            <li>Mở dashboard Pengbot → đăng ký tài khoản (mỗi tài khoản là một công ty).</li>
-            <li>Trang <b>Documents</b> → upload <code>demo/tai-lieu-mau.md</code>, chờ trạng thái <b>READY</b>.</li>
-            <li>Trang <b>Settings</b> → copy <b>publicKey</b>, dán vào ô phía trên rồi bấm <b>Nhúng widget</b>.</li>
-            <li>Bấm bong bóng chat ở góc phải dưới và thử các câu hỏi bên cạnh.</li>
-            <li>Quay lại dashboard → <b>Conversations</b> để xem lại hội thoại, <b>Overview</b> để xem số liệu.</li>
-          </ol>
-          <p style="margin: 10px 0 0; color: #71717a">
-            Server miễn phí ngủ khi không dùng — lần đầu có thể chờ khoảng 1 phút.
-            Trên website thật, khách chỉ cần dán đúng một dòng:
-            <code id="snippet">&lt;script src=".../public/widget.js" data-key="pk_..."&gt;&lt;/script&gt;</code>
-          </p>
-        </div>
-        <div>
-          <h3>Câu hỏi gợi ý <small style="font-weight: 400; color: #71717a">(bấm để copy)</small></h3>
-          <div class="questions">
-            <button class="q" type="button">Tôi muốn hoàn tiền thì làm sao?<small>Trả lời đúng theo chính sách trong tài liệu</small></button>
-            <button class="q" type="button">phi ship ve Ha Noi bao nhieu<small>Gõ không dấu vẫn tìm ra</small></button>
-            <button class="q" type="button">Mã PENGU10 giảm bao nhiêu?<small>Tìm đúng mã chính xác (hybrid search)</small></button>
-            <button class="q" type="button">Tôi pha phin thì nên mua loại nào?<small>Tổng hợp từ nhiều đoạn</small></button>
-            <button class="q" type="button">Thế còn pha V60 thì sao?<small>Nhớ ngữ cảnh câu trước</small></button>
-            <button class="q" type="button">Thủ đô của Pháp là gì?<small>Ngoài tài liệu → bot từ chối, không bịa</small></button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═════════ WEBSITE CỦA KHÁCH HÀNG ═════════ -->
     <header class="site">
       <div class="container">
-        <a class="logo" href="#">Pengu<span>Coffee</span></a>
+        <a class="logo" href="#">Cloudpine <span>Coffee</span></a>
         <nav>
-          <a href="#san-pham">Sản phẩm</a>
-          <a href="#giao-hang">Giao hàng</a>
-          <a href="#lien-he">Liên hệ</a>
+          <a href="#shop">Shop</a>
+          <a href="#shipping">Shipping</a>
+          <a href="#visit">Visit us</a>
         </nav>
       </div>
     </header>
 
     <section class="hero">
       <div class="container">
-        <h1>Cà phê rang mẻ nhỏ từ Đà Lạt</h1>
-        <p>Rang hai lần mỗi tuần, gửi đi trong 48 giờ. Có câu hỏi về hạt, cách pha hay đơn hàng? Hỏi trợ lý ở góc phải màn hình.</p>
-        <a class="cta" href="#san-pham">Xem sản phẩm</a>
+        <p class="eyebrow">Small-batch roasters · Da Lat, Vietnam</p>
+        <h1>Coffee roasted this week, not this year.</h1>
+        <p>We roast in 5 kg batches twice a week and ship within 48 hours, so every bag arrives at its peak.</p>
+        <a class="cta" href="#shop">Shop coffee</a>
       </div>
     </section>
 
-    <section class="block" id="san-pham">
+    <section class="block" id="shop">
       <div class="container">
-        <h2>Sản phẩm</h2>
-        <p class="lead">Túi 250g, nguyên hạt hoặc xay sẵn theo dụng cụ pha của bạn.</p>
+        <h2>Our coffee</h2>
+        <p class="lead">250 g bags, whole bean or ground for your brewer.</p>
         <div class="products">
           <div class="card">
             <div class="swatch" style="background: linear-gradient(135deg, #e9b872, #c98b52)"></div>
-            <div class="body"><h3>Langbiang Sáng</h3><p class="notes">Arabica Cầu Đất · cam, mật ong</p><span class="price">185.000đ</span></div>
+            <div class="body"><h3>Langbiang Morning</h3><p class="notes">Arabica · orange, honey, black tea</p><span class="price">$14</span></div>
           </div>
           <div class="card">
             <div class="swatch" style="background: linear-gradient(135deg, #a5683f, #6b3f26)"></div>
-            <div class="body"><h3>Gió Núi</h3><p class="notes">Arabica + Robusta · sô-cô-la, hạt dẻ</p><span class="price">145.000đ</span></div>
+            <div class="body"><h3>Mountain Breeze</h3><p class="notes">Arabica + Robusta · chocolate, hazelnut</p><span class="price">$11</span></div>
           </div>
           <div class="card">
             <div class="swatch" style="background: linear-gradient(135deg, #5a3522, #2b1d16)"></div>
-            <div class="body"><h3>Đêm Cao Nguyên</h3><p class="notes">Robusta rang đậm · caramel cháy</p><span class="price">120.000đ</span></div>
+            <div class="body"><h3>Highland Night</h3><p class="notes">Dark-roast Robusta · burnt caramel</p><span class="price">$9</span></div>
           </div>
           <div class="card">
             <div class="swatch" style="background: linear-gradient(90deg, #e9b872 33%, #a5683f 33% 66%, #2b1d16 66%)"></div>
-            <div class="body"><h3>Hộp Thử 3 Vị</h3><p class="notes">Mỗi loại 100g</p><span class="price">165.000đ</span></div>
+            <div class="body"><h3>Tasting Box</h3><p class="notes">All three, 100 g each</p><span class="price">$13</span></div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="block" id="giao-hang" style="padding-top: 0">
+    <section class="block" id="shipping" style="padding-top: 0">
       <div class="container">
-        <h2>Mua hàng</h2>
-        <p class="lead">Chi tiết chính sách? Hỏi trợ lý — nó đọc đúng tài liệu của cửa hàng.</p>
+        <h2>Ordering</h2>
+        <p class="lead">Simple policies, no surprises.</p>
         <div class="facts">
-          <div class="fact"><strong>Giao toàn quốc</strong><span>2–4 ngày, miễn phí từ 400.000đ</span></div>
-          <div class="fact"><strong>Đổi trả 7 ngày</strong><span>Khi sản phẩm lỗi hoặc giao sai</span></div>
-          <div class="fact"><strong>Gói hàng tháng</strong><span>Giảm 15%, huỷ bất cứ lúc nào</span></div>
+          <div class="fact"><strong>Ships nationwide</strong><span>2–4 business days, free over $40</span></div>
+          <div class="fact"><strong>7-day returns</strong><span>For damaged or incorrect items</span></div>
+          <div class="fact"><strong>Monthly subscription</strong><span>15% off, cancel anytime</span></div>
         </div>
       </div>
     </section>
 
-    <footer id="lien-he">
+    <section class="block" id="visit" style="background: var(--milk)">
+      <div class="container visit">
+        <div>
+          <h2>Visit the café</h2>
+          <dl>
+            <dt>Address</dt><dd>12 Hai Ba Trung, Ward 6, Da Lat</dd>
+            <dt>Hours</dt><dd>7am – 9pm daily, closed Tuesdays</dd>
+            <dt>Phone</dt><dd>+84 909 123 456</dd>
+            <dt>Email</dt><dd>hello@cloudpinecoffee.com</dd>
+          </dl>
+        </div>
+        <div class="map">Map</div>
+      </div>
+    </section>
+
+    <footer>
       <div class="container">
-        <span>Pengu Coffee · 12 Hai Bà Trưng, Đà Lạt</span>
-        <span>Website giả lập để demo Pengbot</span>
+        <span>© 2026 Cloudpine Coffee Roasters</span>
+        <button type="button" id="open-admin">Admin</button>
       </div>
     </footer>
 
+    <!-- "Custom code" box: where a real site owner pastes third-party scripts. -->
+    <div class="admin-backdrop" id="admin" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+      <div class="admin">
+        <header>
+          <strong id="admin-title">Site settings · Custom code</strong>
+          <button class="x" type="button" id="close-admin" aria-label="Close">×</button>
+        </header>
+        <div class="content">
+          <label for="code">Code before &lt;/body&gt;</label>
+          <p class="hint">Paste third-party code here (chat, analytics…). It runs on every page.</p>
+          <textarea id="code" spellcheck="false" placeholder='<script src="https://…" …></script>'></textarea>
+          <div class="actions">
+            <span class="msg" id="msg"></span>
+            <div>
+              <button class="secondary" type="button" id="remove">Remove</button>
+              <button class="primary" type="button" id="save">Save &amp; publish</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       (function () {
-        // Mặc định trỏ về backend đã deploy. Chạy local thì mở trang với
-        // ?api=http://localhost:3000 (được nhớ lại cho các lần sau).
-        var DEFAULT_API = "https://pengbot-api.onrender.com";
-
-        function load(name) {
-          try { return localStorage.getItem("pengbot-demo:" + name); } catch (e) { return null; }
-        }
-        function save(name, value) {
-          try { localStorage.setItem("pengbot-demo:" + name, value); } catch (e) {}
-        }
-
-        // ?key= và ?api= trên URL thắng localStorage → gửi link demo cho người
-        // khác là họ thấy ngay, không phải dán gì.
-        var params = new URLSearchParams(location.search);
-        if (params.get("key")) save("key", params.get("key").trim());
-        if (params.get("api")) save("api", params.get("api").replace(/\/+$/, ""));
-
-        var key = load("key") || "";
-        var api = load("api") || DEFAULT_API;
-
+        var STORE = "cloudpine:custom-code";
         var $ = function (id) { return document.getElementById(id); };
-        var dot = $("dot");
-        var statusText = $("status");
-        $("key").value = key;
-        $("snippet").textContent =
-          '<script src="' + api + '/public/widget.js" data-key="' + (key || "pk_...") + '"></' + "script>";
 
-        function setStatus(kind, text) {
-          dot.className = "dot " + kind;
-          statusText.textContent = text;
+        function read() {
+          try { return localStorage.getItem(STORE) || ""; } catch (e) { return ""; }
+        }
+        function write(v) {
+          try { v ? localStorage.setItem(STORE, v) : localStorage.removeItem(STORE); } catch (e) {}
         }
 
-        $("toggle-guide").onclick = function () {
-          $("guide").classList.toggle("open");
+        // Extract src + data-key from the pasted code. Only the widget's script
+        // tag is accepted; arbitrary pasted code is never executed.
+        function parse(code) {
+          var src = code.match(/src=["']([^"']+\/public\/widget\.js)["']/);
+          var key = code.match(/data-key=["'](pk_[A-Za-z0-9_-]+)["']/);
+          return src && key ? { src: src[1], key: key[1] } : null;
+        }
+
+        function setMsg(kind, text) {
+          var m = $("msg");
+          m.className = "msg " + (kind || "");
+          m.textContent = text || "";
+        }
+
+        // ?key=pk_...&api=https://... pre-installs the snippet, so a shared link
+        // works without pasting anything.
+        var params = new URLSearchParams(location.search);
+        if (params.get("key")) {
+          var api = (params.get("api") || "https://pengbot-api.onrender.com").replace(/\/+$/, "");
+          write('<script src="' + api + '/public/widget.js" data-key="' + params.get("key").trim() + '" defer></' + "script>");
+          history.replaceState(null, "", location.pathname);
+        }
+
+        // Inject the script as if it were part of the page's HTML.
+        var saved = parse(read());
+        if (saved) {
+          var s = document.createElement("script");
+          s.defer = true;
+          s.src = saved.src;
+          s.setAttribute("data-key", saved.key);
+          document.body.appendChild(s);
+        }
+
+        // Verify before saving so mistakes show up clearly during the demo,
+        // instead of the chat bubble silently never appearing.
+        function verify(parsed) {
+          var api = parsed.src.replace(/\/public\/widget\.js$/, "");
+          setMsg("", "Checking…");
+          var slow = setTimeout(function () { setMsg("", "Waking up the server, hang on…"); }, 4000);
+          return fetch(api + "/public/config?key=" + encodeURIComponent(parsed.key))
+            .then(function (res) {
+              clearTimeout(slow);
+              if (res.status === 401) throw new Error("This key is not valid.");
+              if (res.status === 403) throw new Error("This domain is not on the allowed list.");
+              if (!res.ok) throw new Error("Server error " + res.status + ".");
+            })
+            .catch(function (err) {
+              clearTimeout(slow);
+              throw err.message === "Failed to fetch" ? new Error("Could not reach " + api + ".") : err;
+            });
+        }
+
+        var dialog = $("admin");
+        $("open-admin").onclick = function () {
+          $("code").value = read();
+          setMsg();
+          dialog.classList.add("open");
+          $("code").focus();
         };
-        if (!key) $("guide").classList.add("open");
+        function close() { dialog.classList.remove("open"); }
+        $("close-admin").onclick = close;
+        dialog.onclick = function (e) { if (e.target === dialog) close(); };
+        document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
 
-        $("key-form").onsubmit = function (e) {
-          e.preventDefault();
-          save("key", $("key").value.trim());
-          // Loader chặn nhúng hai lần (window.__pengbotWidget), nên đổi key
-          // phải tải lại trang. Bỏ ?key= cũ khỏi URL để nó không ghi đè key mới.
-          location.href = location.pathname;
+        $("save").onclick = function () {
+          var code = $("code").value.trim();
+          var parsed = parse(code);
+          if (!parsed) return setMsg("err", "Couldn't find a valid script tag.");
+          verify(parsed).then(
+            function () {
+              write(code);
+              setMsg("ok", "Published! Reloading…");
+              // The widget loads once per page, so reload to apply.
+              setTimeout(function () { location.reload(); }, 700);
+            },
+            function (err) { setMsg("err", err.message); }
+          );
         };
 
-        Array.prototype.forEach.call(document.querySelectorAll(".q"), function (btn) {
-          btn.onclick = function () {
-            var text = btn.firstChild.textContent;
-            var done = function () {
-              var small = btn.querySelector("small");
-              var old = small.textContent;
-              small.textContent = "Đã copy — dán vào khung chat";
-              setTimeout(function () { small.textContent = old; }, 1500);
-            };
-            if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
-          };
-        });
-
-        if (!key) return;
-
-        // Kiểm tra key trước khi nhúng để báo lỗi rõ ràng thay vì widget im lặng.
-        setStatus("wait", "Đang kết nối server…");
-        var slow = setTimeout(function () {
-          setStatus("wait", "Server đang thức dậy, chờ chút…");
-        }, 4000);
-
-        fetch(api + "/public/config?key=" + encodeURIComponent(key))
-          .then(function (res) {
-            clearTimeout(slow);
-            if (res.status === 401) throw new Error("publicKey không đúng");
-            if (res.status === 403) throw new Error("Domain này chưa nằm trong allowedDomains (Settings)");
-            if (!res.ok) throw new Error("Server trả lỗi " + res.status);
-            return res.json();
-          })
-          .then(function (cfg) {
-            setStatus("ok", "Đã kết nối · " + (cfg.widgetTitle || "widget"));
-            // Đây chính là snippet khách hàng dán vào website của họ.
-            var s = document.createElement("script");
-            s.async = true;
-            s.src = api + "/public/widget.js";
-            s.setAttribute("data-key", key);
-            document.body.appendChild(s);
-          })
-          .catch(function (err) {
-            clearTimeout(slow);
-            setStatus("err", err.message === "Failed to fetch" ? "Không gọi được server " + api : err.message);
-          });
+        $("remove").onclick = function () {
+          write("");
+          location.reload();
+        };
       })();
     </script>
   </body>

@@ -57,13 +57,13 @@ describe('detectSmallTalk', () => {
 
 describe('smallTalkReply', () => {
   it('trả câu đáp sẵn cho xã giao, null cho câu hỏi thật', () => {
-    expect(smallTalkReply('xin chào')).toContain('Xin chào');
+    expect(smallTalkReply('xin chào')).toContain('Hi there');
     expect(smallTalkReply('phí vận chuyển bao nhiêu')).toBeNull();
   });
 
   it('mọi câu đáp đều mời khách hỏi tiếp', () => {
     for (const q of ['xin chào', 'cảm ơn', 'bạn là ai', 'bạn làm được gì']) {
-      expect(smallTalkReply(q)).toMatch(/hỏi|tìm hiểu|hỗ trợ/);
+      expect(smallTalkReply(q)).toMatch(/ask|help|know/i);
     }
   });
 });

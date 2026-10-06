@@ -36,7 +36,7 @@ export class UpdateTenantDto {
   widgetTitle?: string;
 
   @IsOptional()
-  @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'Màu phải dạng #RRGGBB' })
+  @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'Color must be in #RRGGBB format' })
   widgetColor?: string;
 
   @IsOptional()

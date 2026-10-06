@@ -139,16 +139,16 @@
     panel.className = "panel";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "false");
-    panel.setAttribute("aria-label", "Hộp thoại hỗ trợ");
+    panel.setAttribute("aria-label", "Support chat");
     panel.innerHTML = [
       '<div class="head">',
       "  <h3></h3>",
-      '  <button class="close" aria-label="Đóng">✕</button>',
+      '  <button class="close" aria-label="Close">✕</button>',
       "</div>",
       '<div class="list" role="log" aria-live="polite"></div>',
       '<form class="foot">',
-      '  <input type="text" placeholder="Nhập câu hỏi..." aria-label="Câu hỏi" autocomplete="off">',
-      '  <button type="submit">Gửi</button>',
+      '  <input type="text" placeholder="Type your question..." aria-label="Question" autocomplete="off">',
+      '  <button type="submit">Send</button>',
       "</form>",
     ].join("");
     // Chèn TRƯỚC bubble để giữ đúng thứ tự tab như bản cũ (khung → nút).
@@ -244,12 +244,12 @@
     var box = document.createElement("div");
     box.className = "rate";
     box.setAttribute("role", "group");
-    box.setAttribute("aria-label", "Đánh giá câu trả lời");
+    box.setAttribute("aria-label", "Rate this answer");
 
     var current = null; // null | "UP" | "DOWN"
 
-    var up = button("UP", "Câu trả lời hữu ích", THUMB_UP);
-    var down = button("DOWN", "Câu trả lời chưa đúng", THUMB_DOWN);
+    var up = button("UP", "Helpful answer", THUMB_UP);
+    var down = button("DOWN", "Unhelpful answer", THUMB_DOWN);
     box.appendChild(up);
     box.appendChild(down);
     el.appendChild(box);
@@ -293,8 +293,8 @@
       })
         .then(function (r) {
           if (!r.ok) throw new Error("HTTP " + r.status);
-          if (current === "DOWN") thanks("Cảm ơn, chúng tôi sẽ cải thiện.");
-          else if (current === "UP") thanks("Cảm ơn bạn!");
+          if (current === "DOWN") thanks("Thanks, we'll use this to improve.");
+          else if (current === "UP") thanks("Thank you!");
         })
         .catch(function () {
           // Hỏng thì trả nút về trạng thái cũ. Để nó sáng như đã ghi nhận
@@ -355,7 +355,7 @@
 
   function showConnectionError() {
     typing(false);
-    addMsg("bot", "Xin lỗi, không kết nối được. Bạn thử lại sau nhé.");
+    addMsg("bot", "Sorry, we couldn't connect. Please try again later.");
   }
 
   /**
@@ -376,7 +376,7 @@
         typing(false);
         addMsg(
           "bot",
-          body.message || "Bạn đang gửi hơi nhanh, thử lại sau ít phút nhé.",
+          body.message || "You're sending messages a bit too fast. Please try again shortly.",
         );
         // Khoá ô nhập tới lúc được phép gửi lại. Để khách gõ tiếp rồi lại ăn
         // 429 nữa thì vừa vô ích vừa khó chịu. Trần 60 giây để quota tháng
